@@ -1,0 +1,48 @@
+const fs = require("fs");
+const path = require("path");
+const nodemailer = require("nodemailer");
+
+exports.rejectedAppointment = async (req, res) => {
+  try {
+    const { to, userName, type, status } = req.body;
+
+    // Pick template file
+    const templateFile =
+      type === "consultation"
+        ? "consultationRejected.html"
+        : "vaccinationRejected.html";
+
+    const templatePath = path.join(
+      __dirname,
+      `../ComposedEmails/${templateFile}`
+    );
+    let htmlContent = fs.readFileSync(templatePath, "utf-8");
+
+    // Replace placeholders
+    htmlContent = htmlContent.replace(/{{userName}}/g, userName);
+
+    // Setup mailer
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+
+    // Send email
+    const info = await transporter.sendMail({
+      from: `"PawfectCare" <${process.env.EMAIL_USER}>`,
+      to,
+      subject:
+        status === "approved" ? "Appointment Approved" : "Appointment Rejected",
+      html: htmlContent,
+    });
+
+    console.log("Message sent:", info.messageId, info.envelope);
+    return res.status(200).json({ success: true, messageId: info.messageId });
+  } catch (error) {
+    console.error("Email error:", error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
