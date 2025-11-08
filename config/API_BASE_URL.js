@@ -1,5 +1,2 @@
-export const getApiBaseUrl = () => {
-  return host === "localhost"
-    ? "http://localhost:8081"
-    : "https://pawfectcare-ua8k.onrender.com";
-};
+export const getApiBaseUrl = () =>
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:8081";
