@@ -150,40 +150,29 @@ exports.login = async (req, res) => {
 };
 
 exports.refreshToken = (req, res) => {
-  const { refreshToken } = req.body;
-  if (!refreshToken) return res.status(401).json({ message: "Unauthorized" });
+  const refreshToken = req.cookies.refreshToken || req.body.refreshToken; // Check both places
 
-  // Check if Refresh Token Exists + Valid
+  if (!refreshToken) {
+    return res.status(401).json({ message: "Refresh token required" });
+  }
+
   db.query(
-    "SELECT * FROM auth_refresh_tokens WHERE refresh_token = ? AND revoked = FALSE AND expires_at > NOW()",
+    "SELECT * FROM auth_refresh_token WHERE refresh_token = ?",
     [refreshToken],
     (err, results) => {
       if (err) return res.status(500).json({ message: "Database error" });
+
       if (results.length === 0) {
-        return res
-          .status(401)
-          .json({ message: "Invalid or expired refresh token" });
+        return res.status(401).json({ message: "Invalid refresh token" });
       }
 
-      const savedToken = results[0];
+      const user_id = results[0].user_id;
 
-      jwt.verify(
-        refreshToken,
-        process.env.JWT_REFRESH_SECRET,
-        (err, decoded) => {
-          if (err)
-            return res.status(403).json({ message: "Invalid refresh token" });
+      const newAccessToken = jwt.sign({ user_id }, process.env.JWT_SECRET, {
+        expiresIn: process.env.JWT_EXPIRES_IN,
+      });
 
-          // Generate new Access Token
-          const newAccessToken = jwt.sign(
-            { user_id: savedToken.user_id },
-            process.env.JWT_SECRET,
-            { expiresIn: "15m" }
-          );
-
-          return res.json({ accessToken: newAccessToken });
-        }
-      );
+      return res.status(200).json({ access_token: newAccessToken });
     }
   );
 };
