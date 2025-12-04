@@ -1,11 +1,22 @@
+// controllers/userController.js
 const db = require("../config/db");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 
-// Register a new user
+// helper to create tokens
+const createAccessToken = (user) =>
+  jwt.sign({ user_id: user.user_id, role: user.role }, process.env.JWT_SECRET, {
+    expiresIn: "15m",
+  });
+
+const createRefreshToken = (user) =>
+  jwt.sign({ user_id: user.user_id }, process.env.JWT_REFRESH_SECRET, {
+    expiresIn: "30d",
+  });
+
+// REGISTER
 exports.registerUser = async (req, res) => {
   try {
-    //Destructure fields from req.body
     const {
       first_name,
       last_name,
@@ -18,7 +29,6 @@ exports.registerUser = async (req, res) => {
       password,
     } = req.body;
 
-    //Check for missing fields
     if (
       !first_name ||
       !last_name ||
@@ -33,11 +43,9 @@ exports.registerUser = async (req, res) => {
       return res.status(400).json({ message: "All fields are required" });
     }
 
-    //Normalize enum fields
     const normalizedSex = sex.toLowerCase();
-    const role = "pet owner"; // default
+    const role = "pet owner";
 
-    //Check if email already exists
     const checkEmailQuery = "SELECT * FROM user WHERE email = ?";
     db.query(checkEmailQuery, [email], async (err, result) => {
       if (err) {
@@ -49,12 +57,10 @@ exports.registerUser = async (req, res) => {
         return res.status(400).json({ message: "Email already registered" });
       }
 
-      //Hash password properly
       const hashedPassword = await bcrypt.hash(password, 10);
 
-      //Insert query
       const insertUser = `
-        INSERT INTO user 
+        INSERT INTO user
         (first_name, last_name, email, monthly_salary, birthdate, age, sex, address, password, role)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
@@ -90,7 +96,8 @@ exports.registerUser = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
-// User login
+
+// LOGIN
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -112,32 +119,38 @@ exports.login = async (req, res) => {
           return res.status(401).json({ message: "Invalid email or password" });
         }
 
-        // Create Access Token
-        const accessToken = jwt.sign(
-          { user_id: user.user_id, role: user.role },
-          process.env.JWT_SECRET,
-          { expiresIn: "15m" } // SHORT EXPIRATION
-        );
+        const accessToken = createAccessToken(user);
+        const refreshToken = createRefreshToken(user);
 
-        // Create Refresh Token (LONG EXPIRATION)
-        const refreshToken = jwt.sign(
-          { user_id: user.user_id },
-          process.env.JWT_REFRESH_SECRET,
-          { expiresIn: "30d" }
-        );
-
-        // Save Refresh Token in DB
+        // save refresh in DB
         db.query(
-          "INSERT INTO auth_refresh_tokens (user_id, refresh_token, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 30 DAY))",
+          "INSERT INTO auth_refresh_tokens (user_id, refresh_token, expires_at, revoked) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 30 DAY), 0)",
           [user.user_id, refreshToken],
           (err) => {
-            if (err)
+            if (err) {
+              console.error("Refresh insert error:", err);
               return res.status(500).json({ message: "Database insert error" });
+            }
 
-            res.status(200).json({
+            // set httpOnly cookie
+            res.cookie("refreshToken", refreshToken, {
+              httpOnly: true,
+              sameSite: "Lax",
+              secure: false, // true in production with HTTPS
+              maxAge: 30 * 24 * 60 * 60 * 1000,
+            });
+
+            return res.status(200).json({
               message: "Login successful",
-              accessToken,
-              refreshToken,
+              access_token: accessToken,
+              refresh_token: refreshToken,
+              user: {
+                user_id: user.user_id,
+                role: user.role,
+                email: user.email,
+                first_name: user.first_name,
+                last_name: user.last_name,
+              },
             });
           }
         );
@@ -149,15 +162,16 @@ exports.login = async (req, res) => {
   }
 };
 
+// REFRESH
 exports.refreshToken = (req, res) => {
-  const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
+  const refreshToken = req.cookies?.refreshToken || req.body?.refresh_token;
 
   if (!refreshToken) {
     return res.status(401).json({ message: "Refresh token required" });
   }
 
   db.query(
-    "SELECT * FROM auth_refresh_token WHERE refresh_token = ?",
+    "SELECT * FROM auth_refresh_tokens WHERE refresh_token = ? AND revoked = 0",
     [refreshToken],
     (err, results) => {
       if (err) return res.status(500).json({ message: "Database error" });
@@ -166,44 +180,41 @@ exports.refreshToken = (req, res) => {
         return res.status(401).json({ message: "Invalid refresh token" });
       }
 
-      const user_id = results[0].user_id;
+      const record = results[0];
 
-      const newAccessToken = jwt.sign({ user_id }, process.env.JWT_SECRET, {
-        expiresIn: process.env.JWT_EXPIRES_IN,
-      });
+      jwt.verify(
+        refreshToken,
+        process.env.JWT_REFRESH_SECRET,
+        (verifyErr, decoded) => {
+          if (verifyErr) {
+            return res.status(401).json({ message: "Invalid refresh token" });
+          }
 
-      return res.status(200).json({ access_token: newAccessToken });
+          const user_id = decoded.user_id;
+
+          db.query(
+            "SELECT * FROM user WHERE user_id = ?",
+            [user_id],
+            (userErr, userResults) => {
+              if (userErr)
+                return res.status(500).json({ message: "Database error" });
+
+              if (userResults.length === 0) {
+                return res.status(404).json({ message: "User not found" });
+              }
+
+              const user = userResults[0];
+              const newAccessToken = createAccessToken(user);
+
+              return res.status(200).json({ access_token: newAccessToken });
+            }
+          );
+        }
+      );
     }
   );
 };
 
-// Get logged-in user info
-exports.me = (req, res) => {
-  try {
-    const token = req.headers.authorization?.split(" ")[1];
-
-    if (!token) return res.status(401).json({ message: "Unauthorized" });
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    db.query(
-      "SELECT * FROM user WHERE user_id = ?",
-      [decoded.user_id],
-      (err, results) => {
-        if (err) return res.status(500).json({ message: "Database error" });
-
-        if (results.length === 0) {
-          return res.status(404).json({ message: "User not found" });
-        }
-
-        res.status(200).json(results[0]);
-      }
-    );
-  } catch (error) {
-    res.status(401).json({ message: "Invalid or expired token" });
-  }
-};
-// Create booking (using logged-in user)
 exports.createBooking = (req, res) => {
   try {
     const { appointment_type, appointment_date, timeschedule } = req.body;
@@ -278,5 +289,55 @@ exports.createBooking = (req, res) => {
   } catch (error) {
     console.error("Server error:", error);
     res.status(500).json({ message: "Server error" });
+  }
+};
+// LOGOUT
+exports.logout = (req, res) => {
+  const refreshToken = req.cookies?.refreshToken || req.body?.refresh_token;
+
+  if (refreshToken) {
+    db.query(
+      "UPDATE auth_refresh_tokens SET revoked = 1 WHERE refresh_token = ?",
+      [refreshToken],
+      () => {}
+    );
+  }
+
+  res.clearCookie("refreshToken");
+  return res.status(200).json({ message: "Logged out" });
+};
+
+// ME
+exports.me = (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.split(" ")[1];
+
+    if (!token) return res.status(401).json({ message: "Unauthorized" });
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    db.query(
+      "SELECT * FROM user WHERE user_id = ?",
+      [decoded.user_id],
+      (err, results) => {
+        if (err) return res.status(500).json({ message: "Database error" });
+
+        if (results.length === 0) {
+          return res.status(404).json({ message: "User not found" });
+        }
+
+        const user = results[0];
+        res.status(200).json({
+          user_id: user.user_id,
+          email: user.email,
+          role: user.role,
+          first_name: user.first_name,
+          last_name: user.last_name,
+        });
+      }
+    );
+  } catch (error) {
+    return res.status(401).json({ message: "Invalid or expired token" });
   }
 };
