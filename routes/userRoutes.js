@@ -15,4 +15,7 @@ router.get("/me", auth, UserController.me);
 // Books a user
 router.post("/booking", auth, UserController.createBooking);
 
+// Refresh Token
+router.post("/refresh-token", UserController.refreshToken);
+
 module.exports = router;

@@ -99,12 +99,7 @@ exports.login = async (req, res) => {
       "SELECT * FROM user WHERE email = ?",
       [email],
       async (err, results) => {
-        if (err) {
-          console.error("Database error:", err);
-          return res
-            .status(500)
-            .json({ message: "Database error", error: err.message });
-        }
+        if (err) return res.status(500).json({ message: "Database error" });
 
         if (results.length === 0) {
           return res.status(401).json({ message: "Invalid email or password" });
@@ -117,32 +112,80 @@ exports.login = async (req, res) => {
           return res.status(401).json({ message: "Invalid email or password" });
         }
 
-        // Generate JWT with role
-        const token = jwt.sign(
+        // Create Access Token
+        const accessToken = jwt.sign(
           { user_id: user.user_id, role: user.role },
           process.env.JWT_SECRET,
-          { expiresIn: process.env.JWT_EXPIRES_IN }
+          { expiresIn: "15m" } // SHORT EXPIRATION
         );
 
-        res.status(200).json({
-          message: "Login successful",
-          token,
-          user: {
-            user_id: user.user_id,
-            first_name: user.first_name,
-            last_name: user.last_name,
-            email: user.email,
-            role: user.role, // important
-          },
-        });
+        // Create Refresh Token (LONG EXPIRATION)
+        const refreshToken = jwt.sign(
+          { user_id: user.user_id },
+          process.env.JWT_REFRESH_SECRET,
+          { expiresIn: "30d" }
+        );
+
+        // Save Refresh Token in DB
+        db.query(
+          "INSERT INTO auth_refresh_tokens (user_id, refresh_token, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 30 DAY))",
+          [user.user_id, refreshToken],
+          (err) => {
+            if (err)
+              return res.status(500).json({ message: "Database insert error" });
+
+            res.status(200).json({
+              message: "Login successful",
+              accessToken,
+              refreshToken,
+            });
+          }
+        );
       }
     );
   } catch (error) {
     console.error("Login error:", error);
-    res
-      .status(500)
-      .json({ message: "Internal Server Error", error: error.message });
+    res.status(500).json({ message: "Server error" });
   }
+};
+
+exports.refreshToken = (req, res) => {
+  const { refreshToken } = req.body;
+  if (!refreshToken) return res.status(401).json({ message: "Unauthorized" });
+
+  // Check if Refresh Token Exists + Valid
+  db.query(
+    "SELECT * FROM auth_refresh_tokens WHERE refresh_token = ? AND revoked = FALSE AND expires_at > NOW()",
+    [refreshToken],
+    (err, results) => {
+      if (err) return res.status(500).json({ message: "Database error" });
+      if (results.length === 0) {
+        return res
+          .status(401)
+          .json({ message: "Invalid or expired refresh token" });
+      }
+
+      const savedToken = results[0];
+
+      jwt.verify(
+        refreshToken,
+        process.env.JWT_REFRESH_SECRET,
+        (err, decoded) => {
+          if (err)
+            return res.status(403).json({ message: "Invalid refresh token" });
+
+          // Generate new Access Token
+          const newAccessToken = jwt.sign(
+            { user_id: savedToken.user_id },
+            process.env.JWT_SECRET,
+            { expiresIn: "15m" }
+          );
+
+          return res.json({ accessToken: newAccessToken });
+        }
+      );
+    }
+  );
 };
 
 // Get logged-in user info
