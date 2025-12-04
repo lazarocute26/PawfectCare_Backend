@@ -2,7 +2,7 @@
 const express = require("express");
 const cors = require("cors");
 const bodyParser = require("body-parser");
-
+const cookieParser = require("cookie-parser");
 const app = express();
 
 const dashboardRoutes = require("./routes/dashboardRoutes");
@@ -24,7 +24,7 @@ app.use(cors(corsOptions));
 app.use(bodyParser.json({ limit: "10mb" }));
 app.use(bodyParser.urlencoded({ limit: "10mb", extended: true }));
 app.use(express.json({ limit: "10mb" }));
-
+app.use(cookieParser());
 //Routes
 app.use("/dashboard", dashboardRoutes);
 app.use("/pets", petRoutes);

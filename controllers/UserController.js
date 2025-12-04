@@ -150,7 +150,7 @@ exports.login = async (req, res) => {
 };
 
 exports.refreshToken = (req, res) => {
-  const refreshToken = req.cookies.refreshToken || req.body.refreshToken; // Check both places
+  const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
 
   if (!refreshToken) {
     return res.status(401).json({ message: "Refresh token required" });
