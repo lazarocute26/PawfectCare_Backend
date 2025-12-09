@@ -162,57 +162,71 @@ exports.login = async (req, res) => {
   }
 };
 
-// REFRESH
+// REFRESH ACCESS TOKEN
 exports.refreshToken = (req, res) => {
+  // 1. Read refresh token from HttpOnly cookie or (optionally) from body
   const refreshToken = req.cookies?.refreshToken || req.body?.refresh_token;
 
   if (!refreshToken) {
     return res.status(401).json({ message: "Refresh token required" });
   }
 
-  db.query(
-    "SELECT * FROM auth_refresh_tokens WHERE refresh_token = ? AND revoked = 0",
-    [refreshToken],
-    (err, results) => {
-      if (err) return res.status(500).json({ message: "Database error" });
+  // 2. Check token exists and is not revoked in DB
+  const findTokenSql = `
+    SELECT * 
+    FROM auth_refresh_tokens 
+    WHERE refresh_token = ? AND revoked = 0
+  `;
 
-      if (results.length === 0) {
-        return res.status(401).json({ message: "Invalid refresh token" });
-      }
-
-      const record = results[0];
-
-      jwt.verify(
-        refreshToken,
-        process.env.JWT_REFRESH_SECRET,
-        (verifyErr, decoded) => {
-          if (verifyErr) {
-            return res.status(401).json({ message: "Invalid refresh token" });
-          }
-
-          const user_id = decoded.user_id;
-
-          db.query(
-            "SELECT * FROM user WHERE user_id = ?",
-            [user_id],
-            (userErr, userResults) => {
-              if (userErr)
-                return res.status(500).json({ message: "Database error" });
-
-              if (userResults.length === 0) {
-                return res.status(404).json({ message: "User not found" });
-              }
-
-              const user = userResults[0];
-              const newAccessToken = createAccessToken(user);
-
-              return res.status(200).json({ access_token: newAccessToken });
-            }
-          );
-        }
-      );
+  db.query(findTokenSql, [refreshToken], (err, results) => {
+    if (err) {
+      console.error("Refresh DB error:", err);
+      return res.status(500).json({ message: "Database error" });
     }
-  );
+
+    if (results.length === 0) {
+      return res.status(401).json({ message: "Invalid refresh token" });
+    }
+
+    // 3. Verify the JWT itself
+    jwt.verify(
+      refreshToken,
+      process.env.JWT_REFRESH_SECRET,
+      (verifyErr, decoded) => {
+        if (verifyErr) {
+          console.error("Refresh verify error:", verifyErr);
+          return res.status(401).json({ message: "Invalid refresh token" });
+        }
+
+        const user_id = decoded.user_id;
+
+        // 4. Load user and issue a new access token
+        db.query(
+          "SELECT * FROM user WHERE user_id = ?",
+          [user_id],
+          (userErr, userResults) => {
+            if (userErr) {
+              console.error("User fetch error:", userErr);
+              return res.status(500).json({ message: "Database error" });
+            }
+
+            if (userResults.length === 0) {
+              return res.status(404).json({ message: "User not found" });
+            }
+
+            const user = userResults[0];
+            const newAccessToken = createAccessToken(user);
+
+            // Optionally you could also rotate the refresh token here.
+
+            return res.status(200).json({
+              access_token: newAccessToken,
+            });
+          }
+        );
+      }
+    );
+  });
 };
 
 exports.createBooking = (req, res) => {
