@@ -88,6 +88,7 @@ exports.approveAdoption = (req, res) => {
     res.status(500).json({ error: "Failed to approve adoption" });
   }
 };
+
 exports.rejectAdoption = async (req, res) => {
   try {
     const adoptionId = req.params.id;
@@ -122,6 +123,7 @@ exports.rejectAdoption = async (req, res) => {
     res.status(500).json({ error: "Failed to reject adoption" });
   }
 };
+
 exports.approveAppointment = (req, res) => {
   try {
     const appointmentId = req.params.id;
@@ -208,6 +210,7 @@ exports.approveAppointment = (req, res) => {
     res.status(500).json({ error: "Failed to accept appointment" });
   }
 };
+
 exports.rejectAppointment = (req, res) => {
   try {
     const appointmentId = req.params.id;

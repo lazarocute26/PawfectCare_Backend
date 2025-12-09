@@ -11,6 +11,7 @@ const userRoutes = require("./routes/userRoutes");
 const processRoutes = require("./routes/ProcessRoutes");
 const adoptionEmailRoutes = require("./routes/adoptionEmailRoutes");
 const appointmentEmailRoutes = require("./routes/appointmentEmailRoutes");
+const conversationRoutes = require("./routes/conversationRoutes");
 
 const corsOptions = {
   origin: process.env.FRONTEND_URL1, // "http://localhost:5173"
@@ -30,6 +31,7 @@ app.use("/users", userRoutes);
 app.use("/process", processRoutes);
 app.use("/adoption", adoptionEmailRoutes);
 app.use("/appointment", appointmentEmailRoutes);
+app.use("/conversations", conversationRoutes);
 
 app.listen(process.env.PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on http://0.0.0.0:${process.env.PORT}`);
