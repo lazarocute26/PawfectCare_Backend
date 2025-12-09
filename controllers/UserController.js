@@ -341,3 +341,30 @@ exports.me = (req, res) => {
     return res.status(401).json({ message: "Invalid or expired token" });
   }
 };
+
+// LOGOUT
+exports.logout = (req, res) => {
+  const refreshToken = req.cookies?.refreshToken || req.body?.refresh_token;
+
+  if (!refreshToken) {
+    // no token, just clear cookie and return OK
+    res.clearCookie("refreshToken");
+    return res.status(200).json({ message: "Logged out" });
+  }
+
+  // mark refresh token as revoked in DB
+  db.query(
+    "UPDATE auth_refresh_tokens SET revoked = 1 WHERE refresh_token = ?",
+    [refreshToken],
+    (err) => {
+      if (err) {
+        console.error("Logout DB error:", err);
+        return res.status(500).json({ message: "Database error" });
+      }
+
+      // clear httpOnly cookie
+      res.clearCookie("refreshToken");
+      return res.status(200).json({ message: "Logged out" });
+    }
+  );
+};

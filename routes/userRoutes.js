@@ -19,4 +19,5 @@ router.post("/booking", auth, UserController.createBooking);
 router.post("/refresh-token", UserController.refreshToken);
 
 router.post("/logout", UserController.logout);
+
 module.exports = router;
