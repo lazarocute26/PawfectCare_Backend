@@ -135,8 +135,8 @@ exports.login = async (req, res) => {
             // set httpOnly cookie
             res.cookie("refreshToken", refreshToken, {
               httpOnly: true,
-              sameSite: "Lax",
-              secure: false, // true in production with HTTPS
+              sameSite: "None", // cross-site
+              secure: true, // required for SameSite=None on HTTPS
               maxAge: 30 * 24 * 60 * 60 * 1000,
             });
 
