@@ -4,7 +4,8 @@ const cors = require("cors");
 const bodyParser = require("body-parser");
 const cookieParser = require("cookie-parser");
 const http = require("http");
-const { Server } = require("socket.io");
+
+const { initSocket } = require("./socket");
 
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const petRoutes = require("./routes/petRoutes");
@@ -37,32 +38,12 @@ app.use("/adoption", adoptionEmailRoutes);
 app.use("/appointment", appointmentEmailRoutes);
 app.use("/conversations", conversationRoutes);
 
-// ----- Socket.IO setup -----
+// ----- HTTP + Socket.IO setup -----
 const server = http.createServer(app);
 
-const io = new Server(server, {
-  cors: {
-    origin: process.env.FRONTEND_URL1,
-    credentials: true,
-  },
-});
+// this sets up ONE Socket.IO server and handlers inside socket.js
+initSocket(server);
 
-io.on("connection", (socket) => {
-  console.log("🔌 socket connected:", socket.id);
-
-  socket.on("join_conversation", (conversationId) => {
-    socket.join(`conversation:${conversationId}`);
-  });
-
-  socket.on("disconnect", () => {
-    console.log("🔌 socket disconnected:", socket.id);
-  });
-});
-
-// export io so controllers can emit events
-module.exports.io = io;
-
-// start HTTP + WebSocket server
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);

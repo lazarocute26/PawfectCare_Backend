@@ -1,6 +1,6 @@
 // controllers/messageController.js
 const db = require("../config/db");
-const { io } = require("../server");
+const { getIO } = require("../socket");
 
 // Helper to update conversation last message data
 const updateConversationMeta = (conversationId, content, cb) => {
@@ -79,6 +79,7 @@ exports.sendMessage = (req, res) => {
         const saved = rows[0];
 
         // emit to all sockets in this conversation room (user + admin)
+        const io = getIO();
         io.to(`conversation:${conversationId}`).emit("new_message", saved);
 
         res.status(201).json(saved);
