@@ -28,16 +28,22 @@ exports.sendMessage = (req, res) => {
   }
 
   const senderId = req.user.user_id;
-  const senderRole =
-    req.user.role === "admin" || req.user.role === "ADMIN" ? "ADMIN" : "USER";
 
-  const sql = `
+  // Map your app roles to ENUM('USER','ADMIN')
+  let senderRole;
+  if (req.user.role === "admin" || req.user.role === "admin") {
+    senderRole = "admin";
+  } else {
+    senderRole = "pet owner";
+  }
+
+  const insertSql = `
     INSERT INTO message (conversation_id, sender_id, sender_role, content)
     VALUES (?, ?, ?, ?)
   `;
 
   db.query(
-    sql,
+    insertSql,
     [conversationId, senderId, senderRole, content.trim()],
     (err, result) => {
       if (err) {
@@ -47,15 +53,26 @@ exports.sendMessage = (req, res) => {
 
       const messageId = result.insertId;
 
+      // update conversation last message fields
+      updateConversationMeta(conversationId, content.trim(), () => {});
+
       const selectSql = `
-        SELECT message_id, conversation_id, sender_id, sender_role, content, is_read, created_at
-        FROM message
-        WHERE message_id = ?
+        SELECT
+          m.message_id,
+          m.conversation_id,
+          m.sender_id,
+          m.sender_role,
+          m.content,
+          m.is_read,
+          m.created_at
+        FROM message m
+        WHERE m.message_id = ?
         LIMIT 1
       `;
 
       db.query(selectSql, [messageId], (err2, rows) => {
         if (err2 || rows.length === 0) {
+          console.error("sendMessage select error:", err2);
           return res.status(201).json({ message_id: messageId });
         }
 

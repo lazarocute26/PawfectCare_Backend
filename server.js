@@ -6,8 +6,6 @@ const cookieParser = require("cookie-parser");
 const http = require("http");
 const { Server } = require("socket.io");
 
-const app = express();
-
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const petRoutes = require("./routes/petRoutes");
 const userRoutes = require("./routes/userRoutes");
@@ -15,6 +13,8 @@ const processRoutes = require("./routes/ProcessRoutes");
 const adoptionEmailRoutes = require("./routes/adoptionEmailRoutes");
 const appointmentEmailRoutes = require("./routes/appointmentEmailRoutes");
 const conversationRoutes = require("./routes/conversationRoutes");
+
+const app = express();
 
 const corsOptions = {
   origin: process.env.FRONTEND_URL1, // e.g. "http://localhost:5173"
