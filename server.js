@@ -13,14 +13,13 @@ const adoptionEmailRoutes = require("./routes/adoptionEmailRoutes");
 const appointmentEmailRoutes = require("./routes/appointmentEmailRoutes");
 
 const corsOptions = {
-  origin: [process.env.FRONTEND_URL1, process.env.FRONTEND_URL2].filter(
-    Boolean
-  ),
+  origin: process.env.FRONTEND_URL1, // "http://localhost:5173"
   credentials: true,
   allowedHeaders: ["Content-Type", "Authorization"],
 };
 
 app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 app.use(bodyParser.json({ limit: "10mb" }));
 app.use(bodyParser.urlencoded({ limit: "10mb", extended: true }));
 app.use(express.json({ limit: "10mb" }));
