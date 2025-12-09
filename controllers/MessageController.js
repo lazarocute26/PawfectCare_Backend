@@ -28,7 +28,7 @@ exports.sendMessage = (req, res) => {
   }
 
   const senderId = req.user.user_id;
-  const senderRole = req.user.role === "ADMIN" ? "ADMIN" : "USER";
+  const senderRole = req.user.role === "admin" ? "admin" : "pet owner";
 
   const sql = `
     INSERT INTO message (conversation_id, sender_id, sender_role, content)

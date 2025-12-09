@@ -4,7 +4,7 @@ const db = require("../config/db"); // your existing MySQL connection / pool
 // Admin: get all conversations with user info + last message
 exports.getAllConversations = (req, res) => {
   // optionally check role
-  if (req.user.role !== "ADMIN")
+  if (req.user.role !== "admin")
     return res.status(403).json({ error: "Forbidden" });
 
   const sql = `
