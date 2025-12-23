@@ -5,6 +5,7 @@ const {
 const {
   rejectedAppointment,
 } = require("../Templates/EmailSenders/RejectedAppointment");
+const { otpEmail } = require("../Templates/EmailSenders/OtpEmail");
 const db = require("../config/db");
 const crypto = require("crypto");
 

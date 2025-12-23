@@ -382,11 +382,9 @@ exports.verifyRegistrationOtp = (req, res) => {
     }
 
     if (rows.length === 0) {
-      return res
-        .status(400)
-        .json({
-          message: "Invalid or expired OTP. Please request a new code.",
-        });
+      return res.status(400).json({
+        message: "Invalid or expired OTP. Please request a new code.",
+      });
     }
 
     const otpId = rows[0].id;

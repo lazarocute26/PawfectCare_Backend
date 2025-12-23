@@ -8,7 +8,7 @@ exports.otpEmail = async (req, res) => {
 
     const templatePath = path.join(
       __dirname,
-      "../ComposedEmails/otpEmail.html"
+      "../ComposedEmails/OtpEmail.html"
     );
     let htmlContent = fs.readFileSync(templatePath, "utf-8");
 
