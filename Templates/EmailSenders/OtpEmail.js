@@ -21,25 +21,23 @@ exports.otpEmail = async (req, res) => {
     const transporter = nodemailer.createTransport({
       host: "smtp.gmail.com",
       port: 587,
-      secure: false, // TLS via STARTTLS
+      secure: false, // STARTTLS
       requireTLS: true,
       auth: {
-        user: process.env.EMAIL_USER, // your full Gmail
-        pass: process.env.EMAIL_APP_PASS, // 16-char app password
+        user: process.env.EMAIL_USER, // full Gmail address
+        pass: process.env.EMAIL_APP_PASS, // 16‑char app password
       },
     });
 
-    console.log("Resend response:", { data, error }); // <--- add this
+    const info = await transporter.sendMail({
+      from: `"Pawfect Care" <${process.env.EMAIL_USER}>`,
+      to,
+      subject: "Your PawfectCare Verification Code",
+      html: htmlContent,
+    });
 
-    if (error) {
-      console.error("OTP email error:", error);
-      return res
-        .status(500)
-        .json({ success: false, error: error.message || "Email error" });
-    }
-
-    console.log("OTP Message sent via Resend:", data?.id);
-    return res.status(200).json({ success: true, messageId: data?.id });
+    console.log("OTP Message sent via Gmail SMTP:", info.messageId);
+    return res.status(200).json({ success: true, messageId: info.messageId });
   } catch (error) {
     console.error("OTP email error:", error);
     return res.status(500).json({ success: false, error: error.message });
