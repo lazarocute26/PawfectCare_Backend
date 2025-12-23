@@ -1,9 +1,7 @@
 // Templates/EmailSenders/OtpEmail.js
 const fs = require("fs");
 const path = require("path");
-const { Resend } = require("resend");
-
-const resend = new Resend(process.env.RESEND_API_KEY); // put your re_xxx key in .env
+const nodemailer = require("nodemailer");
 
 exports.otpEmail = async (req, res) => {
   try {
@@ -20,11 +18,15 @@ exports.otpEmail = async (req, res) => {
       .replace(/{{otp}}/g, otp)
       .replace(/{{expiresIn}}/g, expiresInSeconds.toString());
 
-    const { data, error } = await resend.emails.send({
-      from: "PawfectCare <onboarding@resend.dev>", // or your verified domain
-      to,
-      subject: "Your PawfectCare Verification Code",
-      html: htmlContent,
+    const transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false, // TLS via STARTTLS
+      requireTLS: true,
+      auth: {
+        user: process.env.EMAIL_USER, // your full Gmail
+        pass: process.env.EMAIL_APP_PASS, // 16-char app password
+      },
     });
 
     console.log("Resend response:", { data, error }); // <--- add this
