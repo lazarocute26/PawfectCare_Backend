@@ -2,6 +2,7 @@
 const db = require("../config/db");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 
 // helper to create tokens
 const createAccessToken = (user) =>
@@ -354,6 +355,52 @@ exports.me = (req, res) => {
   } catch (error) {
     return res.status(401).json({ message: "Invalid or expired token" });
   }
+};
+
+// VERIFY REGISTRATION OTP (120s validity)
+exports.verifyRegistrationOtp = (req, res) => {
+  const { email, code } = req.body;
+
+  if (!email || !code) {
+    return res.status(400).json({ message: "Email and OTP code are required" });
+  }
+
+  const selectSql = `
+    SELECT id, email, code, created_at
+    FROM otp
+    WHERE email = ?
+      AND code = ?
+      AND created_at >= NOW() - INTERVAL 120 SECOND
+    ORDER BY id DESC
+    LIMIT 1
+  `;
+
+  db.query(selectSql, [email, code], (err, rows) => {
+    if (err) {
+      console.error("OTP verify DB error:", err);
+      return res.status(500).json({ message: "Database error" });
+    }
+
+    if (rows.length === 0) {
+      return res
+        .status(400)
+        .json({
+          message: "Invalid or expired OTP. Please request a new code.",
+        });
+    }
+
+    const otpId = rows[0].id;
+
+    // Optional: delete or mark OTP as used so it cannot be reused
+    db.query("DELETE FROM otp WHERE id = ?", [otpId], (delErr) => {
+      if (delErr) {
+        console.error("OTP delete error:", delErr);
+        // Do not fail verification just because delete failed
+      }
+
+      return res.status(200).json({ message: "OTP verified" });
+    });
+  });
 };
 
 // LOGOUT

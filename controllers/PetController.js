@@ -37,6 +37,7 @@ exports.getCatPets = async (req, res) => {
     res.json(pets);
   });
 };
+
 exports.getDogPets = async (req, res) => {
   const sql =
     "SELECT * FROM pet WHERE status = 'Available' AND pet_type = 'Dog'";

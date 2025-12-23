@@ -211,6 +211,59 @@ exports.approveAppointment = (req, res) => {
   }
 };
 
+// Send registration OTP (120s validity)
+exports.sendRegistrationOtp = (req, res) => {
+  try {
+    const { email, userName } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    const otp = crypto.randomInt(100000, 999999).toString();
+    const expiresInSeconds = 120;
+
+    const insertSql = `
+      INSERT INTO otp (email, code, created_at)
+      VALUES (?, ?, NOW())
+    `;
+
+    db.query(insertSql, [email, otp], async (err) => {
+      if (err) {
+        console.error("OTP insert error:", err);
+        return res.status(500).json({ message: "Database error" });
+      }
+
+      try {
+        await otpEmail(
+          {
+            body: {
+              to: email,
+              userName: userName || "PawfectCare User",
+              otp,
+              expiresInSeconds,
+            },
+          },
+          { status: () => ({ json: () => {} }) }
+        );
+
+        return res.status(201).json({
+          message: "OTP generated and email sent",
+          // expose OTP only while testing
+          otp,
+          expires_in_seconds: expiresInSeconds,
+        });
+      } catch (emailErr) {
+        console.error("Send OTP email error:", emailErr);
+        return res.status(500).json({ message: "Failed to send OTP email" });
+      }
+    });
+  } catch (error) {
+    console.error("sendRegistrationOtp error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
 exports.rejectAppointment = (req, res) => {
   try {
     const appointmentId = req.params.id;

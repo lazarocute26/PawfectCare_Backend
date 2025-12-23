@@ -1,5 +1,6 @@
 const express = require("express");
 const UserController = require("../controllers/UserController");
+const EmailController = require("../controllers/EmailController");
 const auth = require("../middleware/auth");
 const router = express.Router();
 
@@ -19,5 +20,12 @@ router.post("/booking", auth, UserController.createBooking);
 router.post("/refresh-token", UserController.refreshToken);
 
 router.post("/logout", UserController.logout);
+//Send Otp to email
+router.post("/otp/send-registration-otp", EmailController.sendRegistrationOtp);
+//Verify the entered Otp
+router.post(
+  "/otp/verify-registration-otp",
+  UserController.verifyRegistrationOtp
+);
 
 module.exports = router;
