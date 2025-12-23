@@ -26,7 +26,7 @@ exports.acceptedAppointment = async (req, res) => {
       .replace(/{{time}}/g, appointmentTime);
 
     const { data, error } = await resend.emails.send({
-      from: "PawfectCare <no-reply@send.pawfectcaredeploy.com>",
+      from: "PawfectCare <resend._domainkey.pawfectcaredeployed-webdeployment2.k>",
       to,
       subject:
         status === "approved" ? "Appointment Approved" : "Appointment Rejected",

@@ -27,6 +27,8 @@ exports.otpEmail = async (req, res) => {
       html: htmlContent,
     });
 
+    console.log("Resend response:", { data, error }); // <--- add this
+
     if (error) {
       console.error("OTP email error:", error);
       return res
