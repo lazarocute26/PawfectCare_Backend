@@ -427,3 +427,58 @@ exports.logout = (req, res) => {
     }
   );
 };
+
+// NOTIFICATIONS: appointments + adoptions for logged-in user
+exports.getNotifications = (req, res) => {
+  try {
+    const userId = req.user?.user_id;
+
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const sql = `
+      SELECT 
+        'appointment' AS type,
+        a.appointment_id AS id,
+        a.appointment_type,
+        a.review,
+        a.appointment_date,
+        a.timeSchedule,
+        NULL AS dateRequested,
+        NULL AS purpose_of_adoption,
+        NULL AS status
+      FROM appointment a
+      WHERE a.user_id = ?
+
+      UNION ALL
+
+      SELECT 
+        'adoption' AS type,
+        ad.adoption_id AS id,
+        NULL AS appointment_type,
+        NULL AS review,
+        NULL AS appointment_date,
+        NULL AS timeSchedule,
+        ad.dateRequested,
+        ad.purpose_of_adoption,
+        ad.status
+      FROM adoption ad
+      WHERE ad.user_id = ?
+
+      ORDER BY appointment_date IS NULL, appointment_date DESC, dateRequested DESC, id DESC
+    `;
+
+    db.query(sql, [userId, userId], (err, rows) => {
+      if (err) {
+        console.error("Notifications DB error:", err);
+        return res.status(500).json({ message: "Database error" });
+      }
+
+      return res.status(200).json({ notifications: rows });
+    });
+  } catch (error) {
+    console.error("Notifications server error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};

@@ -28,4 +28,6 @@ router.post(
   UserController.verifyRegistrationOtp
 );
 
+router.get("/notification", UserController.getNotifications);
+
 module.exports = router;
