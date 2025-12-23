@@ -26,7 +26,7 @@ exports.adoptionEmail = async (req, res) => {
 
     // Send via Resend
     const { data, error } = await resend.emails.send({
-      from: "PawfectCare", // or your verified domain
+      from: "PawfectCare <no-reply@send.pawfectcaredeploy.com>", // or your verified domain
       to,
       subject:
         type === "approved" ? "Adoption Approved ✅" : "Adoption Rejected ❌",

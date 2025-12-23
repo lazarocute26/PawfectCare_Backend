@@ -21,7 +21,7 @@ exports.otpEmail = async (req, res) => {
       .replace(/{{expiresIn}}/g, expiresInSeconds.toString());
 
     const { data, error } = await resend.emails.send({
-      from: "PawfectCare", // or your verified domain
+      from: "PawfectCare <no-reply@send.pawfectcaredeploy.com>", // or your verified domain
       to,
       subject: "Your PawfectCare Verification Code",
       html: htmlContent,
