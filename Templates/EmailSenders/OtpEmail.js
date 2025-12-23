@@ -1,7 +1,9 @@
 // Templates/EmailSenders/OtpEmail.js
 const fs = require("fs");
 const path = require("path");
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
+
+const resend = new Resend(process.env.RESEND_API_KEY); // put your re_xxx key in .env
 
 exports.otpEmail = async (req, res) => {
   try {
@@ -18,24 +20,22 @@ exports.otpEmail = async (req, res) => {
       .replace(/{{otp}}/g, otp)
       .replace(/{{expiresIn}}/g, expiresInSeconds.toString());
 
-    // use same transporter config as adoptionEmail
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    });
-
-    const info = await transporter.sendMail({
-      from: `"PawfectCare" <${process.env.EMAIL_USER}>`,
+    const { data, error } = await resend.emails.send({
+      from: "PawfectCare", // or your verified domain
       to,
       subject: "Your PawfectCare Verification Code",
       html: htmlContent,
     });
 
-    console.log("OTP Message sent:", info.messageId, info.envelope);
-    return res.status(200).json({ success: true, messageId: info.messageId });
+    if (error) {
+      console.error("OTP email error:", error);
+      return res
+        .status(500)
+        .json({ success: false, error: error.message || "Email error" });
+    }
+
+    console.log("OTP Message sent via Resend:", data?.id);
+    return res.status(200).json({ success: true, messageId: data?.id });
   } catch (error) {
     console.error("OTP email error:", error);
     return res.status(500).json({ success: false, error: error.message });

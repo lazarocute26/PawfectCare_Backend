@@ -1,6 +1,9 @@
+// Templates/EmailSenders/AdoptionEmail.js
 const fs = require("fs");
 const path = require("path");
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 exports.adoptionEmail = async (req, res) => {
   try {
@@ -21,28 +24,26 @@ exports.adoptionEmail = async (req, res) => {
       .replace(/{{userName}}/g, userName)
       .replace(/{{petName}}/g, petName);
 
-    // Setup mailer
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    });
-
-    // Send email
-    const info = await transporter.sendMail({
-      from: `"PawfectCare" <${process.env.EMAIL_USER}>`,
+    // Send via Resend
+    const { data, error } = await resend.emails.send({
+      from: "PawfectCare", // or your verified domain
       to,
       subject:
         type === "approved" ? "Adoption Approved ✅" : "Adoption Rejected ❌",
       html: htmlContent,
     });
 
-    console.log("Message sent:", info.messageId, info.envelope);
-    return res.status(200).json({ success: true, messageId: info.messageId });
+    if (error) {
+      console.error("Adoption email error:", error);
+      return res
+        .status(500)
+        .json({ success: false, error: error.message || "Email error" });
+    }
+
+    console.log("Adoption email sent:", data?.id);
+    return res.status(200).json({ success: true, messageId: data?.id });
   } catch (error) {
-    console.error("Email error:", error);
+    console.error("Adoption email error:", error);
     return res.status(500).json({ success: false, error: error.message });
   }
 };
