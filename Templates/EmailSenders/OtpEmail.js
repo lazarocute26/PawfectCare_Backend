@@ -55,7 +55,8 @@ exports.otpEmail = async ({ to, userName, otp, expiresInSeconds }) => {
     htmlContent = htmlContent
       .replace(/{{userName}}/g, userName)
       .replace(/{{otp}}/g, otp)
-      .replace(/{{expiresIn}}/g, expiresInSeconds.toString());
+      // use String() so it works even if a number is passed
+      .replace(/{{expiresIn}}/g, String(expiresInSeconds ?? ""));
 
     const data = await sendGmail({
       to,
