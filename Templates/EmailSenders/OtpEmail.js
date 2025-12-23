@@ -78,7 +78,7 @@ async function otpEmail({ to, userName, otp, expiresInSeconds }) {
       "OTP email error:",
       error.response?.data || error.message || error
     );
-    throw error;
+    return;
   }
 }
 
