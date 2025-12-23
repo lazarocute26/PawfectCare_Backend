@@ -278,13 +278,19 @@ exports.rejectAppointment = (req, res) => {
     res.status(500).json({ error: "Failed to reject appointment" });
   }
 };
-// Send registration OTP (120s validity)
+
 exports.sendRegistrationOtp = (req, res) => {
   try {
-    const { email, userName } = req.body;
+    let { email, userName } = req.body;
 
     if (!email) {
       return res.status(400).json({ message: "Email is required" });
+    }
+
+    email = String(email).trim();
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ message: "Invalid email address" });
     }
 
     const otp = crypto.randomInt(100000, 999999).toString();
@@ -297,36 +303,31 @@ exports.sendRegistrationOtp = (req, res) => {
 
     db.query(insertSql, [email, otp], async (err) => {
       if (err) {
-        console.error("OTP insert error:", err);
+        console.error("❌ OTP insert error:", err);
         return res.status(500).json({ message: "Database error" });
       }
 
       try {
-        await otpEmail(
-          {
-            body: {
-              to: email,
-              userName: userName || "PawfectCare User",
-              otp,
-              expiresInSeconds,
-            },
-          },
-          { status: () => ({ json: () => {} }) }
-        );
+        await otpEmail({
+          to: email,
+          userName: userName || "PawfectCare User",
+          otp,
+          expiresInSeconds,
+        });
 
         return res.status(201).json({
           message: "OTP generated and email sent",
-          // expose OTP only while testing
+          // REMOVE OTP IN PRODUCTION
           otp,
           expires_in_seconds: expiresInSeconds,
         });
       } catch (emailErr) {
-        console.error("Send OTP email error:", emailErr);
+        console.error("❌ Send OTP email error:", emailErr.message);
         return res.status(500).json({ message: "Failed to send OTP email" });
       }
     });
   } catch (error) {
-    console.error("sendRegistrationOtp error:", error);
+    console.error("❌ sendRegistrationOtp error:", error);
     return res.status(500).json({ message: "Server error" });
   }
 };
