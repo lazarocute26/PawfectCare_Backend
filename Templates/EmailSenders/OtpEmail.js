@@ -1,29 +1,50 @@
 // Templates/EmailSenders/OtpEmail.js
 const fs = require("fs");
 const path = require("path");
-const nodemailer = require("nodemailer");
+const { google } = require("googleapis");
 
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false, // STARTTLS
-  auth: {
-    user: process.env.EMAIL_USER, // full Gmail address
-    pass: process.env.EMAIL_APP_PASS, // 16-char App Password
-  },
-  tls: {
-    rejectUnauthorized: false,
-  },
-  connectionTimeout: 10000, // 10s
-  greetingTimeout: 10000,
-  socketTimeout: 10000,
-});
+const GMAIL_USER = process.env.GMAIL_USER; // your Gmail
+const CLIENT_ID = process.env.GMAIL_CLIENT_ID;
+const CLIENT_SECRET = process.env.GMAIL_CLIENT_SECRET;
+const REFRESH_TOKEN = process.env.GMAIL_REFRESH_TOKEN;
+
+const oAuth2Client = new google.auth.OAuth2(
+  CLIENT_ID,
+  CLIENT_SECRET,
+  "urn:ietf:wg:oauth:2.0:oob"
+);
+
+oAuth2Client.setCredentials({ refresh_token: REFRESH_TOKEN });
+
+async function sendGmail({ to, subject, html }) {
+  const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
+
+  const rawMessage = [
+    `From: Pawfect Care <${GMAIL_USER}>`,
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    "MIME-Version: 1.0",
+    "Content-Type: text/html; charset=UTF-8",
+    "",
+    html,
+  ].join("\r\n");
+
+  const encodedMessage = Buffer.from(rawMessage)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+
+  const res = await gmail.users.messages.send({
+    userId: "me",
+    requestBody: { raw: encodedMessage },
+  });
+
+  return res.data;
+}
 
 exports.otpEmail = async ({ to, userName, otp, expiresInSeconds }) => {
   try {
-    // Optional: helps catch SMTP issues early
-    await transporter.verify();
-
     const templatePath = path.join(
       __dirname,
       "../ComposedEmails/OtpEmail.html"
@@ -36,17 +57,16 @@ exports.otpEmail = async ({ to, userName, otp, expiresInSeconds }) => {
       .replace(/{{otp}}/g, otp)
       .replace(/{{expiresIn}}/g, expiresInSeconds.toString());
 
-    const info = await transporter.sendMail({
-      from: `"PawfectCare" <${process.env.EMAIL_USER}>`,
+    const data = await sendGmail({
       to,
       subject: "Your PawfectCare Verification Code",
       html: htmlContent,
     });
 
-    console.log("OTP email sent:", info.messageId);
-    return info;
+    console.log("OTP email sent via Gmail API:", data.id);
+    return data;
   } catch (error) {
     console.error("OTP email error:", error);
-    throw error; // let controller handle response
+    throw error;
   }
 };
