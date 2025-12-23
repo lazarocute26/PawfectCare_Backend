@@ -1,3 +1,4 @@
+// Templates/EmailSenders/OtpEmail.js
 const fs = require("fs");
 const path = require("path");
 const nodemailer = require("nodemailer");
@@ -17,6 +18,7 @@ exports.otpEmail = async (req, res) => {
       .replace(/{{otp}}/g, otp)
       .replace(/{{expiresIn}}/g, expiresInSeconds.toString());
 
+    // use same transporter config as adoptionEmail
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
@@ -32,7 +34,7 @@ exports.otpEmail = async (req, res) => {
       html: htmlContent,
     });
 
-    console.log("OTP email sent:", info.messageId, info.envelope);
+    console.log("OTP Message sent:", info.messageId, info.envelope);
     return res.status(200).json({ success: true, messageId: info.messageId });
   } catch (error) {
     console.error("OTP email error:", error);
