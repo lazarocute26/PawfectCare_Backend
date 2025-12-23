@@ -22,7 +22,7 @@ exports.adoptionEmail = async (req, res) => {
       .replace(/{{petName}}/g, petName);
 
     const { data, error } = await resend.emails.send({
-      from: "PawfectCare <no-reply@send.pawfectcaredeploy.com>",
+      from: "PawfectCare <onboarding@resend.dev>",
       to,
       subject:
         type === "approved" ? "Adoption Approved ✅" : "Adoption Rejected ❌",
