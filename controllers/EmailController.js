@@ -6,6 +6,7 @@ const {
   rejectedAppointment,
 } = require("../Templates/EmailSenders/RejectedAppointment");
 const db = require("../config/db");
+const crypto = require("crypto");
 
 exports.approveAdoption = (req, res) => {
   try {
