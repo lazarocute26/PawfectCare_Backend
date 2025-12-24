@@ -240,7 +240,7 @@ exports.createBooking = (req, res) => {
     }
 
     // Get logged-in user (from auth middleware)
-    const userId = req.user?.user_id; // make sure your auth middleware sets req.user
+    const userId = req.user?.user_id;
 
     if (!userId) {
       return res
@@ -248,57 +248,88 @@ exports.createBooking = (req, res) => {
         .json({ message: "Unauthorized: User not logged in" });
     }
 
-    // Insert booking into appointment table
-    const insertQuery = `
-      INSERT INTO appointment (user_id, appointment_type, appointment_date, timeschedule, review)
-      VALUES (?, ?, ?, ?,'Pending')
+    // ==== NEW: check if slot already booked for that date ====
+    const checkQuery = `
+      SELECT 1
+      FROM appointment
+      WHERE appointment_date = ?
+        AND timeSchedule = ?
+      LIMIT 1
     `;
 
     db.query(
-      insertQuery,
-      [userId, appointment_type, appointment_date, timeschedule],
-      (err, result) => {
-        if (err) {
-          console.error("Insert error:", err);
-          return res.status(500).json({ message: "Database error" });
+      checkQuery,
+      [appointment_date, timeschedule],
+      (checkErr, checkRows) => {
+        if (checkErr) {
+          console.error("Slot check error:", checkErr);
+          return res
+            .status(500)
+            .json({ message: "Failed to check slot availability" });
         }
 
-        const appointmentId = result.insertId;
+        if (checkRows.length > 0) {
+          // slot already taken
+          return res
+            .status(409)
+            .json({
+              message: "This time slot is already booked for that date.",
+            });
+        }
 
-        // Fetch user details from user table
-        const userQuery = `
-          SELECT user_id, first_name, last_name, email 
-          FROM user 
-          WHERE user_id = ?
+        // ==== ORIGINAL INSERT (runs only if slot is free) ====
+        const insertQuery = `
+          INSERT INTO appointment (user_id, appointment_type, appointment_date, timeSchedule, review)
+          VALUES (?, ?, ?, ?, 'Pending')
         `;
 
-        db.query(userQuery, [userId], (err, userResult) => {
-          if (err) {
-            console.error("User fetch error:", err);
-            return res.status(500).json({ message: "Database error" });
+        db.query(
+          insertQuery,
+          [userId, appointment_type, appointment_date, timeschedule],
+          (err, result) => {
+            if (err) {
+              console.error("Insert error:", err);
+              return res.status(500).json({ message: "Database error" });
+            }
+
+            const appointmentId = result.insertId;
+
+            // Fetch user details from user table
+            const userQuery = `
+              SELECT user_id, first_name, last_name, email 
+              FROM user 
+              WHERE user_id = ?
+            `;
+
+            db.query(userQuery, [userId], (userErr, userResult) => {
+              if (userErr) {
+                console.error("User fetch error:", userErr);
+                return res.status(500).json({ message: "Database error" });
+              }
+
+              if (userResult.length === 0) {
+                return res.status(404).json({ message: "User not found" });
+              }
+
+              const user = userResult[0];
+
+              return res.status(201).json({
+                message: "Booking created successfully",
+                appointment_id: appointmentId,
+                user: {
+                  user_id: user.user_id,
+                  full_name: `${user.first_name} ${user.last_name}`,
+                  email: user.email,
+                },
+                appointment: {
+                  appointment_type,
+                  appointment_date,
+                  timeschedule,
+                },
+              });
+            });
           }
-
-          if (userResult.length === 0) {
-            return res.status(404).json({ message: "User not found" });
-          }
-
-          const user = userResult[0];
-
-          return res.status(201).json({
-            message: "Booking created successfully",
-            appointment_id: appointmentId,
-            user: {
-              user_id: user.user_id,
-              full_name: `${user.first_name} ${user.last_name}`,
-              email: user.email,
-            },
-            appointment: {
-              appointment_type,
-              appointment_date,
-              timeschedule,
-            },
-          });
-        });
+        );
       }
     );
   } catch (error) {
@@ -306,6 +337,7 @@ exports.createBooking = (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
 // LOGOUT
 exports.logout = (req, res) => {
   const refreshToken = req.cookies?.refreshToken || req.body?.refresh_token;

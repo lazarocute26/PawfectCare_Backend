@@ -182,9 +182,8 @@ exports.submitAdoptionRequest = async (req, res) => {
     res.status(500).json({ error: "Adoption validation process failed" });
   }
 };
-// controller
 exports.getAppointmentAvailability = (req, res) => {
-  const { date } = req.query; // expected: 'YYYY-MM-DD'
+  const { date } = req.query; // 'YYYY-MM-DD'
 
   if (!date) {
     return res.status(400).json({ error: "date query param is required" });
@@ -194,7 +193,7 @@ exports.getAppointmentAvailability = (req, res) => {
     SELECT timeSchedule
     FROM appointment
     WHERE appointment_date = ?
-  `; // no status/review filter, your table doesn't have a status column
+  `;
 
   db.query(sql, [date], (err, rows) => {
     if (err) {
@@ -202,9 +201,11 @@ exports.getAppointmentAvailability = (req, res) => {
       return res.status(500).json({ error: "Failed to fetch availability" });
     }
 
-    // MySQL TIME -> "HH:MM:SS", normalize to "HH:MM"
-    const booked = rows.map((r) => r.timeSchedule.toString().slice(0, 5));
+    // Normalize TIME "HH:MM:SS" -> "HH:MM" and skip nulls
+    const booked = rows
+      .filter((r) => r.timeSchedule != null)
+      .map((r) => r.timeSchedule.toString().slice(0, 5));
 
-    res.json({ date, booked });
+    return res.json({ date, booked });
   });
 };
