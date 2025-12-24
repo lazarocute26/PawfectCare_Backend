@@ -6,5 +6,8 @@ const router = express.Router();
 router.get("/getAllAppointment", auth, ProcessController.getAllAppointment);
 router.put("/updateReview/:id", auth, ProcessController.updateReview);
 router.post("/adoption", auth, ProcessController.submitAdoptionRequest);
-router.get("/appointments/availability", controller.getAppointmentAvailability);
+router.get(
+  "/appointments/availability",
+  ProcessController.getAppointmentAvailability
+);
 module.exports = router;
