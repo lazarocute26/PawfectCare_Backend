@@ -182,3 +182,29 @@ exports.submitAdoptionRequest = async (req, res) => {
     res.status(500).json({ error: "Adoption validation process failed" });
   }
 };
+// controller
+exports.getAppointmentAvailability = (req, res) => {
+  const { date } = req.query; // expected: 'YYYY-MM-DD'
+
+  if (!date) {
+    return res.status(400).json({ error: "date query param is required" });
+  }
+
+  const sql = `
+    SELECT timeSchedule
+    FROM appointment
+    WHERE appointment_date = ?
+  `; // no status/review filter, your table doesn't have a status column
+
+  db.query(sql, [date], (err, rows) => {
+    if (err) {
+      console.error("Error fetching availability:", err);
+      return res.status(500).json({ error: "Failed to fetch availability" });
+    }
+
+    // MySQL TIME -> "HH:MM:SS", normalize to "HH:MM"
+    const booked = rows.map((r) => r.timeSchedule.toString().slice(0, 5));
+
+    res.json({ date, booked });
+  });
+};
