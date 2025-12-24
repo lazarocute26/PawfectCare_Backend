@@ -62,118 +62,150 @@ exports.submitAdoptionRequest = async (req, res) => {
   }
 
   try {
-    // Ask AI to validate the purpose
-    const prompt = `
-    Respond ONLY in JSON format:
-    { "decision": "VALID" } or { "decision": "INVALID" }
-
-    Rules:
-    - VALID: purpose includes love, care, sheltering, or protection.
-    - INVALID: purpose includes harm, slavery, abuse, profit, neglect.
-    - INVALID: if the purpose is only one sentence. Must be at least two sentences.
-
-    Input: "${purpose_of_adoption}"
+    // 1) Get user age from DB
+    const ageQuery = `
+      SELECT TIMESTAMPDIFF(YEAR, birthdate, CURDATE()) AS age
+      FROM user
+      WHERE user_id = ?
     `;
-
-    const result = await model.generateContent(prompt);
-    const responseText = result.response.text();
-
-    //Extract JSON safely, even if AI wraps it in text
-    const match = responseText.match(/\{[^}]+\}/);
-    if (!match) {
-      console.error("AI did not return JSON:", responseText);
-      return res.status(500).json({ error: "AI validation failed" });
-    }
-
-    console.log("Prompt:", prompt);
-    console.log("Response text:", responseText);
-
-    let decisionObj;
-    try {
-      decisionObj = JSON.parse(match[0]);
-    } catch (parseErr) {
-      console.error(
-        "JSON parse error:",
-        parseErr,
-        "Raw response:",
-        responseText
-      );
-      return res.status(500).json({ error: "AI validation failed" });
-    }
-
-    const petQuery = `SELECT name FROM pet WHERE pet_id = ?`;
-    db.query(petQuery, [pet_id], (err, petResult) => {
-      if (err) {
-        console.error("Error getting pet details:", err);
-        return res.status(500).json({ error: "Failed to fetch pet details" });
+    db.query(ageQuery, [user_id], async (ageErr, ageRows) => {
+      if (ageErr) {
+        console.error("Error getting user age:", ageErr);
+        return res.status(500).json({ error: "Failed to validate user age" });
       }
 
-      const petName = petResult && petResult.length ? petResult[0].name : null;
-
-      // 🔹 Now also fetch adopter details
-      const userQuery = `SELECT email, last_name FROM user WHERE user_id = ?`;
-      db.query(userQuery, [user_id], (err, userResult) => {
-        if (err) {
-          console.error("Error getting user details:", err);
-          return res
-            .status(500)
-            .json({ error: "Failed to fetch user details" });
-        }
-
-        const adopterEmail =
-          userResult && userResult.length ? userResult[0].email : null;
-        const adopterLastname =
-          userResult && userResult.length ? userResult[0].last_name : null;
-
-        // If INVALID → reject + schedule email
-        if (decisionObj.decision !== "VALID") {
-          setTimeout(async () => {
-            try {
-              await adoptionEmail(
-                {
-                  body: {
-                    to: adopterEmail, // dynamic email
-                    userName: adopterLastname, // lastname instead of hardcoded name
-                    petName: petName, //actual pet name
-                    type: "rejected",
-                  },
-                },
-                { status: () => ({ json: () => {} }) }
-              );
-              console.log(
-                `Rejection email sent to ${adopterEmail} for ${petName}`
-              );
-            } catch (mailErr) {
-              console.error("Error sending rejection email:", mailErr);
-            }
-          }, 1000);
-
-          return res.json({
-            status: "INVALID",
-            message: "Invalid adoption purpose. Request rejected.",
-            petName,
+      if (!ageRows.length || ageRows[0].age == null) {
+        return res
+          .status(400)
+          .json({
+            error: "User birthdate is missing. Cannot process request.",
           });
+      }
+
+      const age = ageRows[0].age;
+
+      // If user is below 18 → reject immediately
+      if (age < 18) {
+        return res.status(403).json({
+          status: "UNDERAGE",
+          message:
+            "You must be at least 18 years old to submit an adoption request.",
+        });
+      }
+
+      // 2) Age is 18+ → proceed with AI validation as before
+      const prompt = `
+        Respond ONLY in JSON format:
+        { "decision": "VALID" } or { "decision": "INVALID" }
+
+        Rules:
+        - VALID: purpose includes love, care, sheltering, or protection.
+        - INVALID: purpose includes harm, slavery, abuse, profit, neglect.
+        - INVALID: if the purpose is only one sentence. Must be at least two sentences.
+
+        Input: "${purpose_of_adoption}"
+      `;
+
+      const result = await model.generateContent(prompt);
+      const responseText = result.response.text();
+
+      const match = responseText.match(/\{[^}]+\}/);
+      if (!match) {
+        console.error("AI did not return JSON:", responseText);
+        return res.status(500).json({ error: "AI validation failed" });
+      }
+
+      let decisionObj;
+      try {
+        decisionObj = JSON.parse(match[0]);
+      } catch (parseErr) {
+        console.error(
+          "JSON parse error:",
+          parseErr,
+          "Raw response:",
+          responseText
+        );
+        return res.status(500).json({ error: "AI validation failed" });
+      }
+
+      const petQuery = `SELECT name FROM pet WHERE pet_id = ?`;
+      db.query(petQuery, [pet_id], (err, petResult) => {
+        if (err) {
+          console.error("Error getting pet details:", err);
+          return res.status(500).json({ error: "Failed to fetch pet details" });
         }
 
-        // If valid → insert into DB
-        const sql = `
-      INSERT INTO adoption (pet_id, user_id, dateRequested, purpose_of_adoption, status)
-      VALUES (?, ?, NOW(), ?, 'Pending')
-    `;
+        const petName =
+          petResult && petResult.length ? petResult[0].name : null;
 
-        db.query(sql, [pet_id, user_id, purpose_of_adoption], (err, result) => {
-          if (err) {
-            console.error("Error inserting adoption request:", err);
+        const userQuery = `SELECT email, last_name FROM user WHERE user_id = ?`;
+        db.query(userQuery, [user_id], (err2, userResult) => {
+          if (err2) {
+            console.error("Error getting user details:", err2);
             return res
               .status(500)
-              .json({ error: "Failed to submit adoption request" });
+              .json({ error: "Failed to fetch user details" });
           }
 
-          res.json({
-            message: "Adoption request submitted successfully",
-            adoption_id: result.insertId,
-            petName,
-          });
+          const adopterEmail =
+            userResult && userResult.length ? userResult[0].email : null;
+          const adopterLastname =
+            userResult && userResult.length ? userResult[0].last_name : null;
+
+          // If INVALID → reject + send email
+          if (decisionObj.decision !== "VALID") {
+            setTimeout(async () => {
+              try {
+                await adoptionEmail(
+                  {
+                    body: {
+                      to: adopterEmail,
+                      userName: adopterLastname,
+                      petName: petName,
+                      type: "rejected",
+                    },
+                  },
+                  { status: () => ({ json: () => {} }) }
+                );
+                console.log(
+                  `Rejection email sent to ${adopterEmail} for ${petName}`
+                );
+              } catch (mailErr) {
+                console.error("Error sending rejection email:", mailErr);
+              }
+            }, 1000);
+
+            return res.json({
+              status: "INVALID",
+              message: "Invalid adoption purpose. Request rejected.",
+              petName,
+            });
+          }
+
+          // If VALID → insert into DB
+          const sql = `
+            INSERT INTO adoption (pet_id, user_id, dateRequested, purpose_of_adoption, status)
+            VALUES (?, ?, NOW(), ?, 'Pending')
+          `;
+
+          db.query(
+            sql,
+            [pet_id, user_id, purpose_of_adoption],
+            (insertErr, result) => {
+              if (insertErr) {
+                console.error("Error inserting adoption request:", insertErr);
+                return res
+                  .status(500)
+                  .json({ error: "Failed to submit adoption request" });
+              }
+
+              res.json({
+                message: "Adoption request submitted successfully",
+                adoption_id: result.insertId,
+                petName,
+              });
+            }
+          );
         });
       });
     });
@@ -182,6 +214,7 @@ exports.submitAdoptionRequest = async (req, res) => {
     res.status(500).json({ error: "Adoption validation process failed" });
   }
 };
+
 exports.getAppointmentAvailability = (req, res) => {
   const { date } = req.query; // 'YYYY-MM-DD'
 
