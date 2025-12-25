@@ -29,9 +29,9 @@ exports.sendMessage = (req, res) => {
 
   const senderId = req.user.user_id;
 
-  // Map your app roles to ENUM('USER','ADMIN')
+  // Map your app roles to ENUM('pet owner','admin')
   let senderRole;
-  if (req.user.role === "admin" || req.user.role === "admin") {
+  if (req.user.role === "admin") {
     senderRole = "admin";
   } else {
     senderRole = "pet owner";
@@ -105,6 +105,13 @@ exports.markConversationRead = (req, res) => {
       console.error("markConversationRead error:", err);
       return res.status(500).json({ error: "Failed to mark messages as read" });
     }
+
+    // optional: tell the other side that their messages were read
+    const io = getIO();
+    io.to(`conversation:${conversationId}`).emit("messages_read", {
+      conversationId: Number(conversationId),
+      reader_id: userId,
+    });
 
     res.json({ success: true, affectedRows: result.affectedRows });
   });

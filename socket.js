@@ -14,8 +14,23 @@ function initSocket(server) {
   io.on("connection", (socket) => {
     console.log("🔌 socket connected:", socket.id);
 
+    // client calls: socket.emit("join_conversation", conversationId)
     socket.on("join_conversation", (conversationId) => {
-      socket.join(`conversation:${conversationId}`);
+      const room = `conversation:${conversationId}`;
+      socket.join(room);
+      console.log(`socket ${socket.id} joined ${room}`);
+    });
+
+    // client calls: socket.emit("typing", { conversationId, sender_role })
+    socket.on("typing", ({ conversationId, sender_role }) => {
+      const room = `conversation:${conversationId}`;
+      socket.to(room).emit("typing", { conversationId, sender_role });
+    });
+
+    // client calls: socket.emit("stop_typing", { conversationId, sender_role })
+    socket.on("stop_typing", ({ conversationId, sender_role }) => {
+      const room = `conversation:${conversationId}`;
+      socket.to(room).emit("stop_typing", { conversationId, sender_role });
     });
 
     socket.on("disconnect", () => {
