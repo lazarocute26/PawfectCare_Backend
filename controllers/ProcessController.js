@@ -75,11 +75,9 @@ exports.submitAdoptionRequest = async (req, res) => {
       }
 
       if (!ageRows.length || ageRows[0].age == null) {
-        return res
-          .status(400)
-          .json({
-            error: "User birthdate is missing. Cannot process request.",
-          });
+        return res.status(400).json({
+          error: "User birthdate is missing. Cannot process request.",
+        });
       }
 
       const age = ageRows[0].age;
@@ -92,7 +90,6 @@ exports.submitAdoptionRequest = async (req, res) => {
             "You must be at least 18 years old to submit an adoption request.",
         });
       }
-
       // 2) Age is 18+ → proceed with AI validation as before
       const prompt = `
         Respond ONLY in JSON format:
@@ -214,7 +211,6 @@ exports.submitAdoptionRequest = async (req, res) => {
     res.status(500).json({ error: "Adoption validation process failed" });
   }
 };
-
 exports.getAppointmentAvailability = (req, res) => {
   const { date } = req.query; // 'YYYY-MM-DD'
 

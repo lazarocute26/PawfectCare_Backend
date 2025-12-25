@@ -1,13 +1,17 @@
 // Templates/EmailSenders/AdoptionEmail.js
 const fs = require("fs");
 const path = require("path");
-const { Resend } = require("resend");
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+const { sendGmail } = require("./GmailClient"); // adjust path if needed
 
 exports.adoptionEmail = async (req, res) => {
   try {
     const { to, userName, petName, type } = req.body;
+
+    if (!to || !type) {
+      return res
+        .status(400)
+        .json({ success: false, error: "to and type are required" });
+    }
 
     // Pick template file
     const templateFile =
@@ -21,27 +25,21 @@ exports.adoptionEmail = async (req, res) => {
 
     // Replace placeholders
     htmlContent = htmlContent
-      .replace(/{{userName}}/g, userName)
-      .replace(/{{petName}}/g, petName);
+      .replace(/{{userName}}/g, userName || "PawfectCare User")
+      .replace(/{{petName}}/g, petName || "your pet");
 
-    // Send via Resend
-    const { data, error } = await resend.emails.send({
-      from: "PawfectCare <onboarding@resend.dev>", // or your verified domain
+    const subject =
+      type === "approved" ? "Adoption Approved ✅" : "Adoption Rejected ❌";
+
+    // Send via Gmail API
+    const data = await sendGmail({
       to,
-      subject:
-        type === "approved" ? "Adoption Approved ✅" : "Adoption Rejected ❌",
+      subject,
       html: htmlContent,
     });
 
-    if (error) {
-      console.error("Adoption email error:", error);
-      return res
-        .status(500)
-        .json({ success: false, error: error.message || "Email error" });
-    }
-
-    console.log("Adoption email sent:", data?.id);
-    return res.status(200).json({ success: true, messageId: data?.id });
+    console.log("Adoption email sent via Gmail API:", data.id);
+    return res.status(200).json({ success: true, messageId: data.id });
   } catch (error) {
     console.error("Adoption email error:", error);
     return res.status(500).json({ success: false, error: error.message });

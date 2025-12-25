@@ -270,11 +270,9 @@ exports.createBooking = (req, res) => {
 
         if (checkRows.length > 0) {
           // slot already taken
-          return res
-            .status(409)
-            .json({
-              message: "This time slot is already booked for that date.",
-            });
+          return res.status(409).json({
+            message: "This time slot is already booked for that date.",
+          });
         }
 
         // ==== ORIGINAL INSERT (runs only if slot is free) ====

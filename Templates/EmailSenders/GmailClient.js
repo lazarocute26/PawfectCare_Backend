@@ -1,19 +1,12 @@
-const fs = require("fs");
-const path = require("path");
+// Templates/EmailSenders/gmailClient.js
 const { google } = require("googleapis");
 
-// =====================
-// ENV VARIABLES
-// =====================
 const GMAIL_USER = process.env.GMAIL_USER;
 const CLIENT_ID = process.env.GMAIL_CLIENT_ID;
 const CLIENT_SECRET = process.env.GMAIL_CLIENT_SECRET;
 const REFRESH_TOKEN = process.env.GMAIL_REFRESH_TOKEN;
 const REDIRECT_URI = process.env.GMAIL_REDIRECT_URI;
 
-// =====================
-// OAUTH CLIENT
-// =====================
 const oAuth2Client = new google.auth.OAuth2(
   CLIENT_ID,
   CLIENT_SECRET,
@@ -22,9 +15,6 @@ const oAuth2Client = new google.auth.OAuth2(
 
 oAuth2Client.setCredentials({ refresh_token: REFRESH_TOKEN });
 
-// =====================
-// SEND EMAIL VIA GMAIL API
-// =====================
 async function sendGmail({ to, subject, html }) {
   if (!to) throw new Error("Missing recipient email");
 
@@ -60,23 +50,4 @@ async function sendGmail({ to, subject, html }) {
   return res.data;
 }
 
-// =====================
-// OTP EMAIL SERVICE
-// =====================
-exports.otpEmail = async function ({ to, userName, otp, expiresInSeconds }) {
-  const templatePath = path.join(__dirname, "../ComposedEmails/OtpEmail.html");
-
-  let htmlContent = fs.readFileSync(templatePath, "utf-8");
-
-  htmlContent = htmlContent
-    .replace(/{{userName}}/g, userName)
-    .replace(/{{otp}}/g, otp)
-    .replace(/{{expiresIn}}/g, String(expiresInSeconds));
-
-  const data = await sendGmail({
-    to,
-    subject: "Your PawfectCare Verification Code",
-    html: htmlContent,
-  });
-  return data;
-};
+module.exports = { sendGmail };

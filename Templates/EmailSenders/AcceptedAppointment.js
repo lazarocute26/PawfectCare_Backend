@@ -1,13 +1,19 @@
+// Templates/EmailSenders/AcceptedAppointmentEmail.js
 const fs = require("fs");
 const path = require("path");
-const { Resend } = require("resend");
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+const { sendGmail } = require("./GmailClient"); // adjust path if needed
 
 exports.acceptedAppointment = async (req, res) => {
   try {
     const { to, userName, appointmentDate, appointmentTime, type, status } =
       req.body;
+
+    if (!to || !type || !status) {
+      return res.status(400).json({
+        success: false,
+        error: "to, type, and status are required",
+      });
+    }
 
     const templateFile =
       type === "consultation"
@@ -18,30 +24,25 @@ exports.acceptedAppointment = async (req, res) => {
       __dirname,
       `../ComposedEmails/${templateFile}`
     );
+
     let htmlContent = fs.readFileSync(templatePath, "utf-8");
 
     htmlContent = htmlContent
-      .replace(/{{userName}}/g, userName)
-      .replace(/{{date}}/g, appointmentDate)
-      .replace(/{{time}}/g, appointmentTime);
+      .replace(/{{userName}}/g, userName || "PawfectCare User")
+      .replace(/{{date}}/g, appointmentDate || "")
+      .replace(/{{time}}/g, appointmentTime || "");
 
-    const { data, error } = await resend.emails.send({
-      from: "PawfectCare <onboarding@resend.dev>",
+    const subject =
+      status === "approved" ? "Appointment Approved" : "Appointment Rejected";
+
+    const data = await sendGmail({
       to,
-      subject:
-        status === "approved" ? "Appointment Approved" : "Appointment Rejected",
+      subject,
       html: htmlContent,
     });
 
-    if (error) {
-      console.error("Accepted appointment email error:", error);
-      return res
-        .status(500)
-        .json({ success: false, error: error.message || "Email error" });
-    }
-
-    console.log("Accepted appointment email sent:", data?.id);
-    return res.status(200).json({ success: true, messageId: data?.id });
+    console.log("Accepted appointment email sent via Gmail API:", data.id);
+    return res.status(200).json({ success: true, messageId: data.id });
   } catch (error) {
     console.error("Accepted appointment email error:", error);
     return res.status(500).json({ success: false, error: error.message });

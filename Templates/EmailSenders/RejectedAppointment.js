@@ -1,12 +1,17 @@
+// Templates/EmailSenders/rejectedAppointmentEmail.js
 const fs = require("fs");
 const path = require("path");
-const { Resend } = require("resend");
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+const { sendGmail } = require("./GmailClient");
 
 exports.rejectedAppointment = async (req, res) => {
   try {
     const { to, userName, type, status } = req.body;
+
+    if (!to || !type || !status) {
+      return res
+        .status(400)
+        .json({ success: false, error: "to, type, and status are required" });
+    }
 
     const templateFile =
       type === "consultation"
@@ -17,27 +22,26 @@ exports.rejectedAppointment = async (req, res) => {
       __dirname,
       `../ComposedEmails/${templateFile}`
     );
+
     let htmlContent = fs.readFileSync(templatePath, "utf-8");
 
-    htmlContent = htmlContent.replace(/{{userName}}/g, userName);
+    htmlContent = htmlContent.replace(
+      /{{userName}}/g,
+      userName || "PawfectCare User"
+    );
 
-    const { data, error } = await resend.emails.send({
-      from: "PawfectCare <onboarding@resend.dev>",
+    const subject =
+      status === "approved" ? "Appointment Approved" : "Appointment Rejected";
+
+    const data = await sendGmail({
       to,
-      subject:
-        status === "approved" ? "Appointment Approved" : "Appointment Rejected",
+      subject,
       html: htmlContent,
     });
 
-    if (error) {
-      console.error("Rejected appointment email error:", error);
-      return res
-        .status(500)
-        .json({ success: false, error: error.message || "Email error" });
-    }
+    console.log("Rejected appointment email sent via Gmail API:", data.id);
 
-    console.log("Rejected appointment email sent:", data?.id);
-    return res.status(200).json({ success: true, messageId: data?.id });
+    return res.status(200).json({ success: true, messageId: data.id });
   } catch (error) {
     console.error("Rejected appointment email error:", error);
     return res.status(500).json({ success: false, error: error.message });
