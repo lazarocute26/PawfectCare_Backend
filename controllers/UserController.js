@@ -512,3 +512,133 @@ exports.getNotifications = (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+
+exports.forgotPassword = (req, res) => {
+  const { email } = req.body;
+
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ message: "Valid email required" });
+  }
+
+  // 1. Check user exists
+  db.query(
+    "SELECT user_id, first_name, email FROM user WHERE email = ?",
+    [email],
+    (err, rows) => {
+      if (err) {
+        console.error("Forgot password user check error:", err);
+        return res.status(500).json({ message: "Database error" });
+      }
+
+      if (rows.length === 0) {
+        // Don't reveal if email exists (security)
+        return res
+          .status(200)
+          .json({ message: "If email exists, OTP sent (check spam folder)" });
+      }
+
+      const user = rows[0];
+
+      // 2. Generate 6-digit OTP
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+      // 3. Insert into otp table (reuse registration OTP table)
+      const insertSql = `
+      INSERT INTO otp (email, code, created_at, purpose) 
+      VALUES (?, ?, NOW(), 'forgot_password')
+    `;
+
+      db.query(insertSql, [email, otp], async (insertErr) => {
+        if (insertErr) {
+          console.error("OTP insert error:", insertErr);
+          return res.status(500).json({ message: "Failed to send OTP" });
+        }
+
+        try {
+          // 4. Send email via your Gmail API (from earlier)
+          await require("../Templates/EmailSenders/ForgotPassword").otpEmail({
+            to: email,
+            userName: user.first_name,
+            otp,
+            expiresInSeconds: 120,
+          });
+
+          console.log(`Forgot password OTP sent to ${email}`);
+          return res.status(200).json({
+            message:
+              "OTP sent to your email (valid 120 seconds). Enter to reset password.",
+          });
+        } catch (emailErr) {
+          console.error("Email send error:", emailErr);
+          // Delete failed OTP
+          db.query(
+            "DELETE FROM otp WHERE email = ? AND code = ? AND purpose = 'forgot_password'",
+            [email, otp]
+          );
+          return res.status(500).json({ message: "Failed to send OTP email" });
+        }
+      });
+    }
+  );
+};
+
+// VERIFY FORGOT PASSWORD OTP + RESET PASSWORD
+exports.verifyForgotOtpAndResetPassword = (req, res) => {
+  const { email, code, newPassword } = req.body;
+
+  if (!email || !code || !newPassword || newPassword.length < 6) {
+    return res
+      .status(400)
+      .json({ message: "Email, valid OTP, and password (6+ chars) required" });
+  }
+
+  // 1. Verify OTP (120s window)
+  const selectSql = `
+    SELECT u.user_id, u.email
+    FROM otp o
+    JOIN user u ON o.email = u.email
+    WHERE o.email = ? AND o.code = ? AND o.purpose = 'forgot_password'
+      AND o.created_at >= NOW() - INTERVAL 120 SECOND
+    ORDER BY o.id DESC LIMIT 1
+  `;
+
+  db.query(selectSql, [email, code], async (err, rows) => {
+    if (err) {
+      console.error("Forgot OTP verify error:", err);
+      return res.status(500).json({ message: "Database error" });
+    }
+
+    if (rows.length === 0) {
+      return res
+        .status(400)
+        .json({ message: "Invalid or expired OTP. Request new code." });
+    }
+
+    const user = rows[0];
+    const otpId = rows[0].otp_id; // assuming otp table has id
+
+    // 2. Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // 3. Update password
+    db.query(
+      "UPDATE user SET password = ?, updated_at = NOW() WHERE user_id = ?",
+      [hashedPassword, user.user_id],
+      (updateErr) => {
+        if (updateErr) {
+          console.error("Password update error:", updateErr);
+          return res.status(500).json({ message: "Failed to update password" });
+        }
+
+        // 4. Delete used OTP
+        db.query("DELETE FROM otp WHERE id = ?", [otpId], (delErr) => {
+          if (delErr) console.error("OTP cleanup error:", delErr);
+
+          return res.status(200).json({
+            message: "Password reset successful! You can now login.",
+          });
+        });
+      }
+    );
+  });
+};
