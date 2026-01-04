@@ -512,7 +512,9 @@ exports.getNotifications = (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+// Add these to userController.js (at the end, before module.exports if separate)
 
+// FORGOT PASSWORD - Send OTP to email (120s expiry)
 exports.forgotPassword = (req, res) => {
   const { email } = req.body;
 
@@ -556,7 +558,7 @@ exports.forgotPassword = (req, res) => {
 
         try {
           // 4. Send email via your Gmail API (from earlier)
-          await require("../Templates/EmailSenders/ForgotPassword").otpEmail({
+          await require("../Templates/EmailSenders/OtpEmail").otpEmail({
             to: email,
             userName: user.first_name,
             otp,
