@@ -30,10 +30,10 @@ router.post(
 
 router.get("/notification", auth, UserController.getNotifications);
 
-router.post("/forgot-password", userController.forgotPassword);
+router.post("/forgot-password", UserController.forgotPassword);
 router.post(
   "/verify-forgot-otp-reset",
-  userController.verifyForgotOtpAndResetPassword
+  UserController.verifyForgotOtpAndResetPassword
 );
 
 module.exports = router;
