@@ -590,7 +590,7 @@ exports.verifyForgotOtpAndResetPassword = (req, res) => {
       .json({ message: "Email, OTP, and password (6+ chars) required" });
   }
 
-  // Verify OTP (your schema ✅)
+  // 1. Verify OTP exists + valid (your schema perfect)
   const selectSql = `
     SELECT o.id, u.user_id 
     FROM otp o JOIN user u ON o.email = u.email 
@@ -601,38 +601,60 @@ exports.verifyForgotOtpAndResetPassword = (req, res) => {
 
   db.query(selectSql, [email, code], async (err, rows) => {
     if (err) {
-      console.error("❌ Verify DB:", err);
+      console.error("Verify DB error:", err);
       return res.status(500).json({ message: "Database error" });
     }
 
     if (rows.length === 0) {
-      console.log("❌ Invalid OTP:", email);
-      return res.status(400).json({ message: "Invalid/expired OTP" });
+      console.log("Invalid OTP for:", email);
+      return res.status(400).json({ message: "Invalid or expired OTP" });
     }
 
     const otpRecord = rows[0];
     const userId = otpRecord.user_id;
     const otpId = otpRecord.id;
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    console.log("OTP valid, resetting password for user_id:", userId);
 
-    // Update + cleanup (atomic)
-    db.query(
-      "UPDATE user SET password = ?, updated_at = NOW() WHERE user_id = ?; DELETE FROM otp WHERE id = ?",
-      [hashedPassword, userId, otpId],
-      (updateErr, results) => {
-        if (updateErr) {
-          console.error("❌ Password update:", updateErr);
-          return res.status(500).json({ message: "Reset failed" });
+    // 2. Hash new password
+    try {
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+      // 3. Update password FIRST
+      db.query(
+        "UPDATE user SET password = ?, updated_at = NOW() WHERE user_id = ?",
+        [hashedPassword, userId],
+        (updateErr) => {
+          if (updateErr) {
+            console.error("Password update failed:", updateErr.sqlMessage);
+            return res
+              .status(500)
+              .json({ message: "Failed to reset password" });
+          }
+
+          console.log("Password updated for user_id:", userId);
+
+          // 4. Delete OTP SECOND (separate query)
+          db.query("DELETE FROM otp WHERE id = ?", [otpId], (deleteErr) => {
+            if (deleteErr) {
+              console.error(
+                "OTP cleanup failed (non-critical):",
+                deleteErr.sqlMessage
+              );
+              // Don't fail password reset over cleanup
+            }
+
+            console.log("🎉 FULL RESET COMPLETE:", email);
+            return res.status(200).json({
+              message: "Password reset successful! Login now.",
+              redirect: "/user/login",
+            });
+          });
         }
-
-        console.log("✅ PASSWORD RESET:", email);
-        return res.status(200).json({
-          message: "Password reset! Login with new password.",
-          redirect: "/",
-        });
-      }
-    );
+      );
+    } catch (hashErr) {
+      console.error("❌ bcrypt hash failed:", hashErr);
+      return res.status(500).json({ message: "Password processing error" });
+    }
   });
 };
