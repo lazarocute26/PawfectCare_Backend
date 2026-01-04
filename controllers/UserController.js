@@ -515,9 +515,8 @@ exports.getNotifications = (req, res) => {
 // Add these to userController.js (at the end, before module.exports if separate)
 
 exports.forgotPassword = (req, res) => {
-  console.log("🔑 forgotPassword:", req.body.email); // Debug
-
   const { email } = req.body;
+
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res.status(400).json({ message: "Valid email required" });
   }
@@ -525,58 +524,57 @@ exports.forgotPassword = (req, res) => {
   db.query(
     "SELECT user_id, first_name FROM user WHERE email = ?",
     [email],
-    (err, rows) => {
+    async (err, rows) => {
       if (err) {
-        console.error("❌ DB error:", err);
+        console.error("DB error:", err);
         return res.status(500).json({ message: "Database error" });
       }
 
-      // Security: Don't reveal email exists
+      // Security: don't reveal emails
       if (rows.length === 0) {
-        console.log("👤 Email not found:", email);
         return res
           .status(200)
-          .json({ message: "OTP sent (check spam folder)" });
+          .json({ message: "Check your email for OTP (120s valid)" });
       }
 
       const user = rows[0];
       const otp = Math.floor(100000 + Math.random() * 900000).toString();
-      console.log("🔢 OTP:", otp, "for", email);
 
-      // Save OTP (your schema ✅)
-      const insertSql =
-        "INSERT INTO otp (email, code, created_at) VALUES (?, ?, NOW())";
-      db.query(insertSql, [email, otp], async (insertErr) => {
-        if (insertErr) {
-          console.error("❌ OTP INSERT:", insertErr.sqlMessage);
-          return res.status(500).json({ message: "Failed to generate OTP" });
+      // Save OTP (your schema perfect)
+      db.query(
+        "INSERT INTO otp (email, code, created_at) VALUES (?, ?, NOW())",
+        [email, otp],
+        async (insertErr) => {
+          if (insertErr) {
+            console.error("OTP save failed:", insertErr.sqlMessage);
+            return res.status(500).json({ message: "Failed to generate OTP" });
+          }
+
+          try {
+            // Send (your existing ✅)
+            await require("../Templates/EmailSenders/OtpEmail").otpEmail({
+              to: email,
+              userName: user.first_name || "User",
+              otp,
+              expiresInSeconds: 120,
+            });
+
+            return res.status(200).json({
+              message: "✅ OTP sent! Check inbox/spam (120s valid)",
+            });
+          } catch (emailErr) {
+            console.error("Email failed:", emailErr.message);
+            // Cleanup
+            db.query("DELETE FROM otp WHERE email = ? AND code = ?", [
+              email,
+              otp,
+            ]);
+            return res.status(500).json({
+              message: "OTP generated but email failed. Try again.",
+            });
+          }
         }
-
-        try {
-          // Send email (your existing ✅)
-          await require("../Templates/EmailSenders/ForgotPassword").otpEmail({
-            to: email,
-            userName: user.first_name,
-            otp,
-            expiresInSeconds: 120,
-          });
-
-          console.log("✅ EMAIL SENT:", email);
-          return res
-            .status(200)
-            .json({ message: "OTP sent! Check email (120s valid)" });
-        } catch (emailErr) {
-          console.error("📧 EMAIL FAILED:", emailErr.message);
-          // Cleanup
-          db.query("DELETE FROM otp WHERE email = ? AND code = ?", [
-            email,
-            otp,
-          ]);
-          return res
-            .status(500)
-            .json({ message: "OTP generated but email delivery failed" });
-        }
-      });
+      );
     }
   );
 };
