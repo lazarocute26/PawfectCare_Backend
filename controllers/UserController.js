@@ -547,7 +547,7 @@ exports.forgotPassword = (req, res) => {
           }
 
           try {
-            // Send (your existing ✅)
+            // Send (your existing )
             await require("../Templates/EmailSenders/OtpEmail").otpEmail({
               to: email,
               userName: user.first_name || "User",
@@ -556,7 +556,7 @@ exports.forgotPassword = (req, res) => {
             });
 
             return res.status(200).json({
-              message: "✅ OTP sent! Check inbox/spam (120s valid)",
+              message: "OTP sent! Check inbox/spam (120s valid)",
             });
           } catch (emailErr) {
             console.error("Email failed:", emailErr.message);
@@ -575,10 +575,10 @@ exports.forgotPassword = (req, res) => {
   );
 };
 
-exports.verifyForgotOtpAndResetPassword = (req, res) => {
+exports.verifyForgotOtpAndResetPassword = async (req, res) => {
   const { email, code, newPassword } = req.body;
 
-  console.log("🔍 Verify forgot OTP:", { email, code: code ? "***" : code });
+  console.log("Verify forgot OTP:", { email, code: code ? "***" : code });
 
   if (!email || !code || !newPassword || newPassword.length < 6) {
     return res
@@ -586,23 +586,25 @@ exports.verifyForgotOtpAndResetPassword = (req, res) => {
       .json({ message: "Email, OTP, and password (6+ chars) required" });
   }
 
-  // 1. Verify OTP exists + valid (your schema perfect)
-  const selectSql = `
-    SELECT o.id, u.user_id 
-    FROM otp o JOIN user u ON o.email = u.email 
-    WHERE o.email = ? AND o.code = ? 
-    AND o.created_at >= NOW() - INTERVAL 120 SECOND
-    ORDER BY o.id DESC LIMIT 1
-  `;
+  try {
+    // 1. Verify OTP (PROMISIFIED - no callbacks)
+    const selectSql = `
+      SELECT o.id, u.user_id 
+      FROM otp o JOIN user u ON o.email = u.email 
+      WHERE o.email = ? AND o.code = ? 
+      AND o.created_at >= NOW() - INTERVAL 120 SECOND
+      ORDER BY o.id DESC LIMIT 1
+    `;
 
-  db.query(selectSql, [email, code], async (err, rows) => {
-    if (err) {
-      console.error("Verify DB error:", err);
-      return res.status(500).json({ message: "Database error" });
-    }
+    const [rows] = await new Promise((resolve, reject) => {
+      db.query(selectSql, [email, code], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    });
 
     if (rows.length === 0) {
-      console.log("Invalid OTP for:", email);
+      console.log("Invalid/expired OTP for:", email);
       return res.status(400).json({ message: "Invalid or expired OTP" });
     }
 
@@ -610,47 +612,42 @@ exports.verifyForgotOtpAndResetPassword = (req, res) => {
     const userId = otpRecord.user_id;
     const otpId = otpRecord.id;
 
-    console.log("OTP valid, resetting password for user_id:", userId);
+    console.log("✅ OTP valid, resetting for user_id:", userId);
 
-    // 2. Hash new password
-    try {
-      const hashedPassword = await bcrypt.hash(newPassword, 10);
+    // 2. Hash password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-      // 3. Update password FIRST
+    // 3. Update password
+    await new Promise((resolve, reject) => {
       db.query(
         "UPDATE user SET password = ?, updated_at = NOW() WHERE user_id = ?",
         [hashedPassword, userId],
-        (updateErr) => {
-          if (updateErr) {
-            console.error("Password update failed:", updateErr.sqlMessage);
-            return res
-              .status(500)
-              .json({ message: "Failed to reset password" });
-          }
-
-          console.log("Password updated for user_id:", userId);
-
-          // 4. Delete OTP SECOND (separate query)
-          db.query("DELETE FROM otp WHERE id = ?", [otpId], (deleteErr) => {
-            if (deleteErr) {
-              console.error(
-                "OTP cleanup failed (non-critical):",
-                deleteErr.sqlMessage
-              );
-              // Don't fail password reset over cleanup
-            }
-
-            console.log("FULL RESET COMPLETE:", email);
-            return res.status(200).json({
-              message: "Password reset successful! Login now.",
-              redirect: "/",
-            });
-          });
+        (err) => {
+          if (err) reject(err);
+          else resolve();
         }
       );
-    } catch (hashErr) {
-      console.error("❌ bcrypt hash failed:", hashErr);
-      return res.status(500).json({ message: "Password processing error" });
-    }
-  });
+    });
+
+    console.log("✅ Password updated for user_id:", userId);
+
+    // 4. Delete OTP (fire-and-forget, non-blocking)
+    db.query("DELETE FROM otp WHERE id = ?", [otpId], (err) => {
+      if (err) console.error("⚠️ OTP cleanup failed:", err.sqlMessage);
+    });
+
+    console.log("🎉 FULL RESET COMPLETE:", email);
+    res.status(200).json({
+      message: "Password reset successful! Login now.",
+      redirect: "/",
+    });
+  } catch (error) {
+    console.error("💥 RESET FAILED:", {
+      message: error.message,
+      stack: error.stack,
+      sql: error.sqlMessage || "No SQL error",
+      code: error.code,
+    });
+    res.status(500).json({ message: "Reset failed: " + error.message });
+  }
 };
