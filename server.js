@@ -40,6 +40,8 @@ app.use("/appointment", appointmentEmailRoutes);
 app.use("/conversations", conversationRoutes);
 
 // Serve React build
+import path from "path";
+
 const buildPath = path.join(__dirname, "dist");
 
 app.use(express.static(buildPath));
