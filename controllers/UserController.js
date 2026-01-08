@@ -577,34 +577,37 @@ exports.forgotPassword = (req, res) => {
 
 exports.verifyForgotOtpAndResetPassword = async (req, res) => {
   const { email, code, newPassword } = req.body;
-  // Validation
+
+  console.log("🔍 Reset for email:", email, "code length:", code?.length);
+
   if (!email || !code || !newPassword || newPassword.length < 6) {
-    return res.status(400).json({
-      message: "Email, 6-digit OTP, and password (6+ chars) required",
-    });
+    return res
+      .status(400)
+      .json({
+        message: "Email, 6-digit OTP, and password (6+ chars) required",
+      });
   }
 
   try {
-    // STEP 1: Find user by email OR username (your DB structure)
-    const userSql = `
-      SELECT user_id FROM user 
-      WHERE email = ?
-    `;
+    // ✅ FIXED: Single param [email] - matches WHERE email = ?
+    const userSql = "SELECT user_id FROM user WHERE email = ?";
     const [userRows] = await new Promise((resolve, reject) => {
-      db.query(userSql, [email, email], (err, rows) =>
-        err ? reject(err) : resolve(rows)
-      );
+      db.query(userSql, [email], (err, rows) => {
+        // ← FIXED: [email] not [email, email]
+        if (err) reject(err);
+        else resolve(rows);
+      });
     });
 
     if (userRows.length === 0) {
-      console.log("No user found for:", email);
-      return res.status(404).json({ message: "Email not registered" });
+      console.log("❌ No user with email:", email);
+      return res.status(400).json({ message: "Email not registered" });
     }
 
     const userId = userRows[0].user_id;
     console.log("✅ User found! ID:", userId);
 
-    // STEP 2: Verify OTP for this email
+    // Verify OTP
     const otpSql = `
       SELECT id FROM otp 
       WHERE email = ? AND code = ? 
@@ -612,62 +615,39 @@ exports.verifyForgotOtpAndResetPassword = async (req, res) => {
       ORDER BY id DESC LIMIT 1
     `;
     const [otpRows] = await new Promise((resolve, reject) => {
-      db.query(otpSql, [email, code], (err, rows) =>
-        err ? reject(err) : resolve(rows)
-      );
+      db.query(otpSql, [email, code], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
     });
 
     if (otpRows.length === 0) {
-      console.log(
-        "No valid OTP for email:",
-        email,
-        "code length:",
-        code.length
-      );
-      return res
-        .status(400)
-        .json({ message: "Invalid or expired OTP (120s limit)" });
+      console.log("❌ Invalid OTP for:", email);
+      return res.status(400).json({ message: "Invalid or expired OTP" });
     }
 
     const otpId = otpRows[0].id;
-    console.log("OTP valid! ID:", otpId);
 
-    // STEP 3: Hash + Update password
+    // Hash + Update
     const hashedPassword = await bcrypt.hash(newPassword, 12);
     await new Promise((resolve, reject) => {
       db.query(
-        "UPDATE user SET password = ? WHERE user_id = ?",
+        "UPDATE user SET password = ?, updated_at = NOW() WHERE user_id = ?",
         [hashedPassword, userId],
         (err, result) => {
-          console.log("Password update result:", result?.affectedRows || 0);
+          console.log("Update affected rows:", result?.affectedRows || 0);
           err ? reject(err) : resolve();
         }
       );
     });
 
-    //STEP 4: Cleanup OTP
-    await new Promise((resolve, reject) => {
-      db.query("DELETE FROM otp WHERE id = ?", [otpId], resolve);
-    });
+    // Delete OTP
+    db.query("DELETE FROM otp WHERE id = ?", [otpId]);
 
-    console.log("SUCCESS! Reset user_id:", userId, "email:", email);
-    res.json({
-      message: "Password reset successful! You can login now.",
-      success: true,
-      redirect: "/",
-    });
+    console.log("🎉 SUCCESS! user_id:", userId);
+    res.json({ message: "Password reset successful!", success: true });
   } catch (error) {
-    console.error("FATAL ERROR:", {
-      message: error.message,
-      sqlMessage: error.sqlMessage,
-      sqlState: error.sqlState,
-      errno: error.errno,
-      code: error.code,
-    });
-    res.status(500).json({
-      message: "Server error: " + (error.sqlMessage || error.message),
-      error:
-        process.env.NODE_ENV === "development" ? error.sqlMessage : undefined,
-    });
+    console.error("💥 ERROR:", error.sqlMessage || error.message);
+    res.status(500).json({ message: error.sqlMessage || "Server error" });
   }
 };
