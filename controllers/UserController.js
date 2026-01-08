@@ -578,7 +578,7 @@ exports.forgotPassword = (req, res) => {
 exports.verifyForgotOtpAndResetPassword = async (req, res) => {
   const { email, code, newPassword } = req.body;
 
-  console.log("Verify forgot OTP:", { email, code: code ? "***" : code });
+  console.log("Reset for email:", email, "code:", code ? "***" : code);
 
   if (!email || !code || !newPassword || newPassword.length < 6) {
     return res
@@ -587,8 +587,8 @@ exports.verifyForgotOtpAndResetPassword = async (req, res) => {
   }
 
   try {
-    // FIXED: Direct user lookup by username (your table structure)
-    const userSql = "SELECT user_id FROM user WHERE username = ?";
+    // FIXED: User lookup by email (matches your DB)
+    const userSql = "SELECT user_id FROM user WHERE email = ?";
     const [userRows] = await new Promise((resolve, reject) => {
       db.query(userSql, [email], (err, rows) =>
         err ? reject(err) : resolve(rows)
@@ -596,14 +596,14 @@ exports.verifyForgotOtpAndResetPassword = async (req, res) => {
     });
 
     if (userRows.length === 0) {
-      console.log("No user found for username:", email);
-      return res.status(400).json({ message: "User not found" });
+      console.log("No user with email:", email);
+      return res.status(400).json({ message: "Email not registered" });
     }
 
     const userId = userRows[0].user_id;
     console.log("User found, ID:", userId);
 
-    // 1. Verify OTP matches email (no JOIN needed)
+    // Verify OTP
     const otpSql = `
       SELECT id FROM otp 
       WHERE email = ? AND code = ? AND created_at >= NOW() - INTERVAL 120 SECOND
@@ -617,17 +617,14 @@ exports.verifyForgotOtpAndResetPassword = async (req, res) => {
     });
 
     if (otpRows.length === 0) {
-      console.log("Invalid/expired OTP for:", email);
+      console.log("Invalid OTP for:", email);
       return res.status(400).json({ message: "Invalid or expired OTP" });
     }
 
     const otpId = otpRows[0].id;
-    console.log("OTP valid, ID:", otpId);
 
-    // 2. Hash password
+    // Hash + Update password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-    // 3. Update password
     await new Promise((resolve, reject) => {
       db.query(
         "UPDATE user SET password = ?, updated_at = NOW() WHERE user_id = ?",
@@ -636,27 +633,17 @@ exports.verifyForgotOtpAndResetPassword = async (req, res) => {
       );
     });
 
-    // 4. Delete OTP
+    // Delete OTP
     await new Promise((resolve, reject) => {
       db.query("DELETE FROM otp WHERE id = ?", [otpId], (err) =>
         err ? reject(err) : resolve()
       );
     });
 
-    console.log("FULL RESET COMPLETE: user_id", userId, "email:", email);
-    res.json({
-      message: "Password reset successful! Login now.",
-      redirect: "/",
-    });
+    console.log("RESET SUCCESS: email", email, "user_id", userId);
+    res.json({ message: "Password reset successful!", redirect: "/" });
   } catch (error) {
-    console.error(
-      "RESET ERROR:",
-      error.message,
-      error.sqlMessage || "",
-      error.code || ""
-    );
-    res.status(500).json({
-      message: "Reset failed: " + (error.sqlMessage || error.message),
-    });
+    console.error("💥 RESET ERROR:", error.message, error.sqlMessage || "");
+    res.status(500).json({ message: error.sqlMessage || "Reset failed" });
   }
 };
