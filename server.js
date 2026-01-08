@@ -4,6 +4,7 @@ const cors = require("cors");
 const bodyParser = require("body-parser");
 const cookieParser = require("cookie-parser");
 const http = require("http");
+const path = require("path");
 
 const { initSocket } = require("./socket");
 
@@ -37,6 +38,13 @@ app.use("/process", processRoutes);
 app.use("/adoption", adoptionEmailRoutes);
 app.use("/appointment", appointmentEmailRoutes);
 app.use("/conversations", conversationRoutes);
+
+app.use(express.static(path.join(__dirname, "build")));
+
+// React router fallback
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "build", "index.html"));
+});
 
 // ----- HTTP + Socket.IO setup -----
 const server = http.createServer(app);
