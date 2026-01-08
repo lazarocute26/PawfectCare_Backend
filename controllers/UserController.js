@@ -588,7 +588,7 @@ exports.verifyForgotOtpAndResetPassword = async (req, res) => {
     // STEP 1: Find user by email OR username (your DB structure)
     const userSql = `
       SELECT user_id FROM user 
-      WHERE email = ? OR username = ?
+      WHERE email = ?
     `;
     const [userRows] = await new Promise((resolve, reject) => {
       db.query(userSql, [email, email], (err, rows) =>
@@ -598,7 +598,7 @@ exports.verifyForgotOtpAndResetPassword = async (req, res) => {
 
     if (userRows.length === 0) {
       console.log("No user found for:", email);
-      return res.status(404).json({ message: "Email/username not registered" });
+      return res.status(404).json({ message: "Email not registered" });
     }
 
     const userId = userRows[0].user_id;
@@ -630,13 +630,13 @@ exports.verifyForgotOtpAndResetPassword = async (req, res) => {
     }
 
     const otpId = otpRows[0].id;
-    console.log("✅ OTP valid! ID:", otpId);
+    console.log("OTP valid! ID:", otpId);
 
     // STEP 3: Hash + Update password
     const hashedPassword = await bcrypt.hash(newPassword, 12);
     await new Promise((resolve, reject) => {
       db.query(
-        "UPDATE user SET password = ?, updated_at = NOW() WHERE user_id = ?",
+        "UPDATE user SET password = ? WHERE user_id = ?",
         [hashedPassword, userId],
         (err, result) => {
           console.log("Password update result:", result?.affectedRows || 0);
