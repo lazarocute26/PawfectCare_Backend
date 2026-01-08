@@ -9,21 +9,21 @@ exports.getUserCount = async (req, res) => {
     res.json({ count: results[0].count });
   });
 };
-exports.getAppointmentCount = async (req, res) => {
-  const sql = "SELECT COUNT(*) AS count FROM `appointment`";
+exports.getAppointmentCount = (req, res) => {
+  const sql =
+    "SELECT COUNT(*) AS count FROM `appointment` WHERE review = 'Pending'";
   db.query(sql, (err, results) => {
-    if (err) {
-      return res.status(500).json({ message: "Error fetching users" });
-    }
+    if (err)
+      return res.status(500).json({ message: "Error fetching appointments" });
     res.json({ count: results[0].count });
   });
 };
-exports.getAdoptionCount = async (req, res) => {
-  const sql = "SELECT COUNT(*) AS count FROM `adoption`";
+exports.getAdoptionCount = (req, res) => {
+  const sql =
+    "SELECT COUNT(*) AS count FROM `adoption` WHERE status = 'pending'";
   db.query(sql, (err, results) => {
-    if (err) {
-      return res.status(500).json({ message: "Error fetching users" });
-    }
+    if (err)
+      return res.status(500).json({ message: "Error fetching adoptions" });
     res.json({ count: results[0].count });
   });
 };
