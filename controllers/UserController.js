@@ -4,7 +4,9 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 
-// helper to create tokens
+const REFRESH_EXPIRES = "7d";
+const REFRESH_COOKIE_MAXAGE = 7 * 24 * 60 * 60 * 1000;
+
 const createAccessToken = (user) =>
   jwt.sign({ user_id: user.user_id, role: user.role }, process.env.JWT_SECRET, {
     expiresIn: "15m",
@@ -12,7 +14,7 @@ const createAccessToken = (user) =>
 
 const createRefreshToken = (user) =>
   jwt.sign({ user_id: user.user_id }, process.env.JWT_REFRESH_SECRET, {
-    expiresIn: "30d",
+    expiresIn: "7d",
   });
 
 // REGISTER
@@ -164,140 +166,64 @@ exports.login = async (req, res) => {
   }
 };
 
-exports.refreshToken = async (req, res) => {
-  try {
-    // 🔍 DEBUG: Log incoming request
-    console.log(
-      "🔄 Refresh request - Cookies:",
-      Object.keys(req.cookies || {})
-    );
-    console.log(
-      "🔄 Refresh request - Has refreshToken:",
-      !!req.cookies?.refreshToken
-    );
+exports.refreshToken = (req, res) => {
+  const refreshToken = req.cookies?.refreshToken;
 
-    // 1. Get refresh token (cookie priority)
-    const refreshToken = req.cookies?.refreshToken || req.body?.refresh_token;
+  if (!refreshToken) {
+    return res.status(401).json({ message: "No refresh token" });
+  }
 
-    if (!refreshToken) {
-      console.log("❌ No refresh token found");
-      return res.status(401).json({ message: "Refresh token required" });
-    }
-
-    // 2. Check DB - not revoked + not expired
-    const findTokenSql = `
-      SELECT art.*, u.role 
-      FROM auth_refresh_tokens art
-      JOIN user u ON art.user_id = u.user_id
-      WHERE art.refresh_token = ? AND art.revoked = 0
-    `;
-
-    db.query(findTokenSql, [refreshToken], async (err, results) => {
-      if (err) {
-        console.error("❌ Refresh DB error:", err);
-        return res.status(500).json({ message: "Database error" });
-      }
-
-      if (results.length === 0) {
-        console.log("❌ Invalid/revoked refresh token");
+  // 1. Verify JWT FIRST
+  jwt.verify(
+    refreshToken,
+    process.env.JWT_REFRESH_SECRET,
+    (verifyErr, decoded) => {
+      if (verifyErr) {
         return res.status(401).json({ message: "Invalid refresh token" });
       }
 
-      const tokenRecord = results[0];
+      const userId = decoded.user_id;
 
-      // 3. Verify JWT signature
-      jwt.verify(
-        refreshToken,
-        process.env.JWT_REFRESH_SECRET,
-        { maxAge: "7d" }, // Match your refresh token expiry
-        async (verifyErr, decoded) => {
-          if (verifyErr) {
-            console.log("❌ JWT verify failed:", verifyErr.message);
-            // Revoke invalid token
-            db.query(
-              "UPDATE auth_refresh_tokens SET revoked = 1 WHERE refresh_token = ?",
-              [refreshToken]
-            );
-            return res.status(401).json({ message: "Invalid refresh token" });
+      // 2. Check DB (not revoked, not expired)
+      db.query(
+        `
+        SELECT *
+        FROM auth_refresh_tokens
+        WHERE refresh_token = ?
+          AND revoked = 0
+          AND expires_at > NOW()
+        `,
+        [refreshToken],
+        (err, rows) => {
+          if (err) return res.status(500).json({ message: "DB error" });
+
+          if (rows.length === 0) {
+            return res.status(401).json({ message: "Refresh token revoked" });
           }
 
-          const user_id = decoded.user_id;
-
-          // 4. Fetch fresh user data
+          // 3. Fetch user
           db.query(
-            "SELECT user_id, email, role, first_name FROM user WHERE user_id = ? AND status = 'active'",
-            [user_id],
-            (userErr, userResults) => {
-              if (userErr) {
-                console.error("❌ User query error:", userErr);
-                return res.status(500).json({ message: "Database error" });
+            "SELECT user_id, email, role FROM user WHERE user_id = ?",
+            [userId],
+            (userErr, userRows) => {
+              if (userErr || userRows.length === 0) {
+                return res.status(401).json({ message: "User invalid" });
               }
 
-              if (userResults.length === 0) {
-                console.log("❌ User not found or inactive");
-                return res.status(404).json({ message: "User not found" });
-              }
+              const user = userRows[0];
 
-              const user = userResults[0];
-
-              // 5. Generate NEW tokens (rotation)
+              // 4. ISSUE NEW ACCESS TOKEN ONLY (NO ROTATION)
               const newAccessToken = createAccessToken(user);
-              const newRefreshToken = createRefreshToken(user);
 
-              // 6. Revoke OLD refresh token
-              db.query(
-                "UPDATE auth_refresh_tokens SET revoked = 1 WHERE refresh_token = ?",
-                [refreshToken],
-                (revokeErr) => {
-                  if (revokeErr) console.error("Revoke error:", revokeErr);
-
-                  // 7. Insert NEW refresh token
-                  db.query(
-                    "INSERT INTO auth_refresh_tokens (user_id, refresh_token, expires_at, created_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 7 DAY), NOW())",
-                    [user_id, newRefreshToken],
-                    (insertErr) => {
-                      if (insertErr)
-                        console.error("New token insert error:", insertErr);
-
-                      // 8. Set SECURE cookie
-                      const cookieOptions = {
-                        httpOnly: true,
-                        secure: process.env.NODE_ENV === "production",
-                        sameSite:
-                          process.env.NODE_ENV === "production"
-                            ? "none"
-                            : "lax",
-                        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-                      };
-
-                      res.cookie(
-                        "refreshToken",
-                        newRefreshToken,
-                        cookieOptions
-                      );
-
-                      console.log("✅ Refresh success for user:", user_id);
-                      res.status(200).json({
-                        access_token: newAccessToken,
-                        user: {
-                          id: user.user_id,
-                          email: user.email,
-                          role: user.role,
-                        },
-                      });
-                    }
-                  );
-                }
-              );
+              return res.status(200).json({
+                access_token: newAccessToken,
+              });
             }
           );
         }
       );
-    });
-  } catch (error) {
-    console.error("💥 RefreshToken controller error:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
+    }
+  );
 };
 
 exports.createBooking = (req, res) => {

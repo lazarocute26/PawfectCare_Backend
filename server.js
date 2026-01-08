@@ -18,11 +18,10 @@ const conversationRoutes = require("./routes/conversationRoutes");
 const app = express();
 
 const corsOptions = {
-  origin: [process.env.FRONTEND_URL1],
-  credentials: true, //
+  origin: process.env.FRONTEND_URL1, // string, not array
+  credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-  optionsSuccessStatus: 200, // Some legacy browsers choke on 204
+  allowedHeaders: ["Content-Type", "Authorization"],
 };
 
 app.use(cors(corsOptions));
