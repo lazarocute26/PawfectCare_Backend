@@ -225,7 +225,7 @@ exports.refreshToken = async (req, res) => {
 
           // 4. Fetch fresh user data
           db.query(
-            "SELECT user_id, email, role, name FROM user WHERE user_id = ? AND status = 'active'",
+            "SELECT user_id, email, role, first_name FROM user WHERE user_id = ? AND status = 'active'",
             [user_id],
             (userErr, userResults) => {
               if (userErr) {
