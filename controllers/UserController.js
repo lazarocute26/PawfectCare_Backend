@@ -578,76 +578,72 @@ exports.forgotPassword = (req, res) => {
 exports.verifyForgotOtpAndResetPassword = async (req, res) => {
   const { email, code, newPassword } = req.body;
 
-  console.log("🔍 Reset for email:", email, "code length:", code?.length);
+  console.log(`Reset: ${email} codeLen=${code?.length}`);
 
   if (!email || !code || !newPassword || newPassword.length < 6) {
     return res
       .status(400)
-      .json({
-        message: "Email, 6-digit OTP, and password (6+ chars) required",
-      });
+      .json({ message: "Email, OTP, password(6+) required" });
   }
 
   try {
-    // ✅ FIXED: Single param [email] - matches WHERE email = ?
+    // 1. Get user_id by email
     const userSql = "SELECT user_id FROM user WHERE email = ?";
     const [userRows] = await new Promise((resolve, reject) => {
-      db.query(userSql, [email], (err, rows) => {
-        // ← FIXED: [email] not [email, email]
-        if (err) reject(err);
-        else resolve(rows);
-      });
+      db.query(userSql, [email], (err, rows) =>
+        err ? reject(err) : resolve(rows)
+      );
     });
 
-    if (userRows.length === 0) {
-      console.log("❌ No user with email:", email);
-      return res.status(400).json({ message: "Email not registered" });
+    if (!userRows.length) {
+      console.log(` No user: ${email}`);
+      return res.status(404).json({ message: "Email not found" });
     }
 
     const userId = userRows[0].user_id;
-    console.log("✅ User found! ID:", userId);
+    console.log(`User ID: ${userId}`);
 
-    // Verify OTP
-    const otpSql = `
-      SELECT id FROM otp 
-      WHERE email = ? AND code = ? 
-      AND created_at >= DATE_SUB(NOW(), INTERVAL 2 MINUTE)
-      ORDER BY id DESC LIMIT 1
-    `;
+    // 2. Verify OTP
+    const otpSql = `SELECT id FROM otp WHERE email=? AND code=? AND created_at >= DATE_SUB(NOW(), INTERVAL 2 MINUTE) ORDER BY id DESC LIMIT 1`;
     const [otpRows] = await new Promise((resolve, reject) => {
-      db.query(otpSql, [email, code], (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows);
-      });
+      db.query(otpSql, [email, code], (err, rows) =>
+        err ? reject(err) : resolve(rows)
+      );
     });
 
-    if (otpRows.length === 0) {
-      console.log("❌ Invalid OTP for:", email);
-      return res.status(400).json({ message: "Invalid or expired OTP" });
+    if (!otpRows.length) {
+      console.log(`Invalid OTP: ${email}`);
+      return res.status(400).json({ message: "Invalid/expired OTP" });
     }
 
     const otpId = otpRows[0].id;
+    console.log(`OTP ID: ${otpId}`);
 
-    // Hash + Update
+    // 3. Hash password (NOW bcrypt works!)
     const hashedPassword = await bcrypt.hash(newPassword, 12);
+    console.log("Password hashed");
+
+    // 4. Update user
     await new Promise((resolve, reject) => {
       db.query(
-        "UPDATE user SET password = ?, updated_at = NOW() WHERE user_id = ?",
+        "UPDATE user SET password=?, updated_at=NOW() WHERE user_id=?",
         [hashedPassword, userId],
         (err, result) => {
-          console.log("Update affected rows:", result?.affectedRows || 0);
+          console.log(`Update: ${result?.affectedRows || 0} rows`);
           err ? reject(err) : resolve();
         }
       );
     });
 
-    // Delete OTP
-    db.query("DELETE FROM otp WHERE id = ?", [otpId]);
-
-    console.log("🎉 SUCCESS! user_id:", userId);
-    res.json({ message: "Password reset successful!", success: true });
+    // 5. Delete OTP
+    db.query("DELETE FROM otp WHERE id=?", [otpId]);
+    console.log(`SUCCESS: ${email}`);
+    res.json({ message: "Password reset! Login now.", success: true });
   } catch (error) {
-    console.error("💥 ERROR:", error.sqlMessage || error.message);
-    res.status(500).json({ message: error.sqlMessage || "Server error" });
+    console.error("ERROR:", error.message, error.code, error.sqlMessage);
+    res.status(500).json({
+      message: "Server error",
+      debug: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
   }
 };
