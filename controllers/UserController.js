@@ -164,70 +164,77 @@ exports.login = async (req, res) => {
 };
 
 // REFRESH ACCESS TOKEN
-exports.refreshToken = (req, res) => {
-  // 1. Read refresh token from HttpOnly cookie or (optionally) from body
-  const refreshToken = req.cookies?.refreshToken || req.body?.refresh_token;
+exports.refreshToken = async (req, res) => {
+  try {
+    // 1. Prioritize HttpOnly cookie, fallback to body
+    const refreshToken = req.cookies?.refreshToken || req.body?.refresh_token;
 
-  if (!refreshToken) {
-    return res.status(401).json({ message: "Refresh token required" });
-  }
-
-  // 2. Check token exists and is not revoked in DB
-  const findTokenSql = `
-    SELECT * 
-    FROM auth_refresh_tokens 
-    WHERE refresh_token = ? AND revoked = 0
-  `;
-
-  db.query(findTokenSql, [refreshToken], (err, results) => {
-    if (err) {
-      console.error("Refresh DB error:", err);
-      return res.status(500).json({ message: "Database error" });
+    if (!refreshToken) {
+      return res.status(401).json({ message: "Refresh token required" });
     }
 
-    if (results.length === 0) {
-      return res.status(401).json({ message: "Invalid refresh token" });
-    }
+    // 2. Check DB (not revoked)
+    const findTokenSql = `
+      SELECT * FROM auth_refresh_tokens 
+      WHERE refresh_token = ? AND revoked = 0
+    `;
 
-    // 3. Verify the JWT itself
-    jwt.verify(
-      refreshToken,
-      process.env.JWT_REFRESH_SECRET,
-      (verifyErr, decoded) => {
-        if (verifyErr) {
-          console.error("Refresh verify error:", verifyErr);
-          return res.status(401).json({ message: "Invalid refresh token" });
-        }
-
-        const user_id = decoded.user_id;
-
-        // 4. Load user and issue a new access token
-        db.query(
-          "SELECT * FROM user WHERE user_id = ?",
-          [user_id],
-          (userErr, userResults) => {
-            if (userErr) {
-              console.error("User fetch error:", userErr);
-              return res.status(500).json({ message: "Database error" });
-            }
-
-            if (userResults.length === 0) {
-              return res.status(404).json({ message: "User not found" });
-            }
-
-            const user = userResults[0];
-            const newAccessToken = createAccessToken(user);
-
-            // Optionally you could also rotate the refresh token here.
-
-            return res.status(200).json({
-              access_token: newAccessToken,
-            });
-          }
-        );
+    db.query(findTokenSql, [refreshToken], async (err, results) => {
+      if (err) {
+        console.error("Refresh DB error:", err);
+        return res.status(500).json({ message: "Database error" });
       }
-    );
-  });
+
+      if (results.length === 0) {
+        return res.status(401).json({ message: "Invalid refresh token" });
+      }
+
+      // 3. Verify JWT
+      jwt.verify(
+        refreshToken,
+        process.env.JWT_REFRESH_SECRET,
+        async (verifyErr, decoded) => {
+          if (verifyErr) {
+            return res.status(401).json({ message: "Invalid refresh token" });
+          }
+
+          const user_id = decoded.user_id;
+
+          // 4. Fetch user + new tokens
+          db.query(
+            "SELECT * FROM user WHERE user_id = ?",
+            [user_id],
+            (userErr, userResults) => {
+              if (userErr || userResults.length === 0) {
+                return res.status(404).json({ message: "User not found" });
+              }
+
+              const user = userResults[0];
+              const newAccessToken = createAccessToken(user);
+
+              const newRefreshToken = createRefreshToken(user);
+              db.query(
+                "UPDATE auth_refresh_tokens SET refresh_token = ?, revoked = 1 WHERE refresh_token = ?",
+                [newRefreshToken, refreshToken]
+              );
+              res.cookie("refreshToken", newRefreshToken, {
+                httpOnly: true,
+                secure: true,
+                sameSite: "strict",
+              });
+
+              res.status(200).json({
+                access_token: newAccessToken,
+              });
+            }
+          );
+        }
+      );
+    });
+  } catch (error) {
+    console.error("Refresh token error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
 exports.createBooking = (req, res) => {
@@ -644,10 +651,10 @@ exports.verifyForgotOtpAndResetPassword = (req, res) => {
               // Don't fail password reset over cleanup
             }
 
-            console.log("🎉 FULL RESET COMPLETE:", email);
+            console.log("FULL RESET COMPLETE:", email);
             return res.status(200).json({
               message: "Password reset successful! Login now.",
-              redirect: "/user/login",
+              redirect: "/",
             });
           });
         }
