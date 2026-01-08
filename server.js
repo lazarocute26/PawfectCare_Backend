@@ -7,7 +7,6 @@ const path = require("path");
 
 const { initSocket } = require("./socket");
 
-// Routes
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const petRoutes = require("./routes/petRoutes");
 const userRoutes = require("./routes/userRoutes");
@@ -18,12 +17,8 @@ const conversationRoutes = require("./routes/conversationRoutes");
 
 const app = express();
 
-/* =======================
-   Middleware
-======================= */
-
 const corsOptions = {
-  origin: process.env.FRONTEND_URL1 || true, // allow same-origin when serving dist
+  origin: process.env.FRONTEND_URL1,
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
@@ -35,10 +30,7 @@ app.use(bodyParser.json({ limit: "10mb" }));
 app.use(bodyParser.urlencoded({ limit: "10mb", extended: true }));
 app.use(express.json({ limit: "10mb" }));
 
-/* =======================
-   API Routes
-======================= */
-
+// API routes
 app.use("/dashboard", dashboardRoutes);
 app.use("/pets", petRoutes);
 app.use("/users", userRoutes);
@@ -47,34 +39,11 @@ app.use("/adoption", adoptionEmailRoutes);
 app.use("/appointment", appointmentEmailRoutes);
 app.use("/conversations", conversationRoutes);
 
-/* =======================
-   Serve Frontend (Vite dist)
-======================= */
-
-const buildPath = path.join(__dirname, "dist");
-
-// Debug (optional)
-console.log("📦 Serving frontend from:", buildPath);
-
-app.use(express.static(buildPath));
-
-// SPA fallback — MUST BE AFTER API ROUTES
-app.get(
-  /^\/(?!dashboard|pets|users|process|adoption|appointment|conversations).*/,
-  (req, res) => {
-    res.sendFile(path.join(buildPath, "index.html"));
-  }
-);
-
-/* =======================
-   HTTP + Socket.IO
-======================= */
-
+// HTTP + Socket.IO
 const server = http.createServer(app);
 initSocket(server);
 
 const PORT = process.env.PORT || 5000;
-
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
 });
