@@ -18,17 +18,22 @@ const conversationRoutes = require("./routes/conversationRoutes");
 const app = express();
 
 const corsOptions = {
-  origin: process.env.FRONTEND_URL1, // e.g. "http://localhost:5173"
-  credentials: true,
-  allowedHeaders: ["Content-Type", "Authorization"],
+  origin: [
+    process.env.FRONTEND_URL1, // "http://localhost:5173"
+    "https://your-frontend.onrender.com", // Add prod URL
+  ],
+  credentials: true, //
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+  optionsSuccessStatus: 200, // Some legacy browsers choke on 204
 };
 
 app.use(cors(corsOptions));
+app.use(cookieParser());
+app.options("*", cors(corsOptions));
 app.use(bodyParser.json({ limit: "10mb" }));
 app.use(bodyParser.urlencoded({ limit: "10mb", extended: true }));
 app.use(express.json({ limit: "10mb" }));
-app.use(cookieParser());
-
 // Routes
 app.use("/dashboard", dashboardRoutes);
 app.use("/pets", petRoutes);
