@@ -578,18 +578,17 @@ exports.forgotPassword = (req, res) => {
 exports.verifyForgotOtpAndResetPassword = async (req, res) => {
   const { email, code, newPassword } = req.body;
 
-  // Clean input
-  const cleanEmail = email.trim().toLowerCase();
+  const cleanEmail = email?.trim().toLowerCase();
 
   if (!cleanEmail || !code || !newPassword || newPassword.length < 6) {
     return res
       .status(400)
-      .json({ message: "Email, 6-digit OTP, password(6+) required" });
+      .json({ message: "Email, OTP, and password (6+ chars) required" });
   }
 
   try {
-    // 1. Get user by email
-    const [userRows] = await new Promise((resolve, reject) => {
+    /* 1️⃣ Get user */
+    const userRows = await new Promise((resolve, reject) => {
       db.query(
         "SELECT user_id FROM user WHERE email = ?",
         [cleanEmail],
@@ -597,51 +596,51 @@ exports.verifyForgotOtpAndResetPassword = async (req, res) => {
       );
     });
 
-    if (!userRows.length) {
+    if (userRows.length === 0) {
       return res.status(404).json({ message: "Email not registered" });
     }
 
     const userId = userRows[0].user_id;
 
-    // 2. Verify OTP (2 min window)
-    const [otpRows] = await new Promise((resolve, reject) => {
+    /* 2️⃣ Verify OTP (2-minute window) */
+    const otpRows = await new Promise((resolve, reject) => {
       db.query(
         `
-        SELECT id FROM otp 
-        WHERE email = ? AND code = ? 
+        SELECT id FROM otp
+        WHERE email = ? AND code = ?
         AND created_at >= DATE_SUB(NOW(), INTERVAL 2 MINUTE)
-        ORDER BY id DESC LIMIT 1
-      `,
+        ORDER BY id DESC
+        LIMIT 1
+        `,
         [cleanEmail, code],
         (err, rows) => (err ? reject(err) : resolve(rows))
       );
     });
 
-    if (!otpRows.length) {
+    if (otpRows.length === 0) {
       return res.status(400).json({ message: "Invalid or expired OTP" });
     }
 
-    const otpId = otpRows[0].id;
-
-    // 3. Hash + update password
+    /* 3️⃣ Hash + update password */
     const hashedPassword = await bcrypt.hash(newPassword, 12);
+
     await new Promise((resolve, reject) => {
       db.query(
-        "UPDATE user SET password = ?, updated_at = NOW() WHERE user_id = ?",
+        "UPDATE user SET password = ? WHERE user_id = ?",
         [hashedPassword, userId],
         (err) => (err ? reject(err) : resolve())
       );
     });
 
-    // 4. Cleanup OTP
-    db.query("DELETE FROM otp WHERE id = ?", [otpId]);
+    /* 4️⃣ Delete ALL OTPs for this email */
+    db.query("DELETE FROM otp WHERE email = ?", [cleanEmail]);
 
     res.json({
       success: true,
       message: "Password reset successful! You can login now.",
     });
   } catch (error) {
-    console.error("Reset error:", error.message);
+    console.error("Reset error:", error);
     res.status(500).json({ message: "Server error during reset" });
   }
 };
