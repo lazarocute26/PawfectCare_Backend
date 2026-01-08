@@ -40,11 +40,16 @@ app.use("/appointment", appointmentEmailRoutes);
 app.use("/conversations", conversationRoutes);
 
 // Serve React build
-app.use(express.static(path.join(__dirname, "build")));
+const buildPath = path.join(__dirname, "dist");
 
-app.get(/^\/(?!api).*/, (req, res) => {
-  res.sendFile(path.join(__dirname, "build", "index.html"));
-});
+app.use(express.static(buildPath));
+
+app.get(
+  /^\/(?!dashboard|pets|users|process|adoption|appointment|conversations).*/,
+  (req, res) => {
+    res.sendFile(path.join(buildPath, "index.html"));
+  }
+);
 
 // HTTP + Socket.IO
 const server = http.createServer(app);
