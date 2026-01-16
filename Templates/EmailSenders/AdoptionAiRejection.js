@@ -29,7 +29,7 @@ exports.adoptionEmail = async (req, res) => {
       .replace(/{{petName}}/g, petName || "your pet");
 
     const subject =
-      type === "approved" ? "Adoption Approved ✅" : "Adoption Rejected ❌";
+      type === "approved" ? "Adoption Approved" : "Adoption Rejected";
 
     // Send via Gmail API
     const data = await sendGmail({
