@@ -4,6 +4,7 @@ const router = express.Router();
 const auth = require("../middleware/auth");
 const report = require("../controllers/ReportController");
 
-router.get("/report", auth, report.getRawReport);
+router.get("/adoption", auth, report.getAdoptionReport);
+router.get("/appointment", auth, report.getAppointmentReport);
 
 module.exports = router;

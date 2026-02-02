@@ -3,12 +3,11 @@ const db = require("../config/db");
 
 const parseDate = (v) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
 
-// GET /process/report/raw?from=YYYY-MM-DD&to=YYYY-MM-DD
-exports.getRawReport = (req, res) => {
+// GET /process/report/adoptions?from=YYYY-MM-DD&to=YYYY-MM-DD
+exports.getAdoptionReport = (req, res) => {
   const from = parseDate(req.query.from) || "1970-01-01";
   const to = parseDate(req.query.to) || "2999-12-31";
 
-  // 1) Approved adoptions: pet + adopter info
   const qApprovedAdoptions = `
     SELECT
       ad.adoption_id,
@@ -32,7 +31,26 @@ exports.getRawReport = (req, res) => {
     ORDER BY ad.dateRequested DESC, ad.adoption_id DESC
   `;
 
-  // 2) Approved appointments: owner + appointment info
+  db.query(qApprovedAdoptions, [from, to], (err, rows) => {
+    if (err) {
+      console.error("Approved adoptions report error:", err);
+      return res
+        .status(500)
+        .json({ message: "DB error (adoptions)", error: err });
+    }
+
+    return res.status(200).json({
+      range: { from, to },
+      approvedAdoptions: rows || [],
+    });
+  });
+};
+
+// GET /process/report/appointments?from=YYYY-MM-DD&to=YYYY-MM-DD
+exports.getAppointmentReport = (req, res) => {
+  const from = parseDate(req.query.from) || "1970-01-01";
+  const to = parseDate(req.query.to) || "2999-12-31";
+
   const qApprovedAppointments = `
     SELECT
       a.appointment_id,
@@ -53,34 +71,17 @@ exports.getRawReport = (req, res) => {
              a.appointment_id DESC
   `;
 
-  db.query(qApprovedAdoptions, [from, to], (errAdoptions, rowsAdoptions) => {
-    if (errAdoptions) {
-      console.error("Approved adoptions report error:", errAdoptions);
+  db.query(qApprovedAppointments, [from, to], (err, rows) => {
+    if (err) {
+      console.error("Approved appointments report error:", err);
       return res
         .status(500)
-        .json({ message: "DB error (adoptions)", error: errAdoptions });
+        .json({ message: "DB error (appointments)", error: err });
     }
 
-    db.query(
-      qApprovedAppointments,
-      [from, to],
-      (errAppointments, rowsAppointments) => {
-        if (errAppointments) {
-          console.error("Approved appointments report error:", errAppointments);
-          return res
-            .status(500)
-            .json({
-              message: "DB error (appointments)",
-              error: errAppointments,
-            });
-        }
-
-        return res.status(200).json({
-          range: { from, to },
-          approvedAdoptions: rowsAdoptions || [],
-          approvedAppointments: rowsAppointments || [],
-        });
-      },
-    );
+    return res.status(200).json({
+      range: { from, to },
+      approvedAppointments: rows || [],
+    });
   });
 };

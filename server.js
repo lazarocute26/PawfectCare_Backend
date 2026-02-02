@@ -39,7 +39,7 @@ app.use("/process", processRoutes);
 app.use("/adoption", adoptionEmailRoutes);
 app.use("/appointment", appointmentEmailRoutes);
 app.use("/conversations", conversationRoutes);
-app.use("/raw", reportRoutes);
+app.use("/report", reportRoutes);
 
 // HTTP + Socket.IO
 const server = http.createServer(app);
