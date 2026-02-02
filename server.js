@@ -14,6 +14,7 @@ const processRoutes = require("./routes/ProcessRoutes");
 const adoptionEmailRoutes = require("./routes/adoptionEmailRoutes");
 const appointmentEmailRoutes = require("./routes/appointmentEmailRoutes");
 const conversationRoutes = require("./routes/conversationRoutes");
+const reportRoutes = require("./routes/ReportRoute");
 
 const app = express();
 
@@ -38,6 +39,7 @@ app.use("/process", processRoutes);
 app.use("/adoption", adoptionEmailRoutes);
 app.use("/appointment", appointmentEmailRoutes);
 app.use("/conversations", conversationRoutes);
+app.use("/raw", reportRoutes);
 
 // HTTP + Socket.IO
 const server = http.createServer(app);
