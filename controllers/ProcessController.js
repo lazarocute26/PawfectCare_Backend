@@ -54,6 +54,36 @@ exports.getAllAppointment = async (req, res) => {
   });
 };
 
+// Helper to convert your salary strings to a numeric value
+function parseMonthlySalary(raw) {
+  if (!raw) return 0;
+
+  // Normalize string: lowercase, remove peso sign, commas, spaces
+  const s = String(raw)
+    .toLowerCase()
+    .replace(/[\s₱,]/g, "");
+
+  // "Below₱5,000" → treat as less than 5000
+  if (s.includes("below")) return 0;
+
+  // Range: "5000-10000" or "p5000-10000"
+  const rangeMatch = s.match(/(\d+)\s*-\s*(\d+)/);
+  if (rangeMatch) {
+    const min = parseInt(rangeMatch[1], 10);
+    const max = parseInt(rangeMatch[2], 10);
+    // you can choose min, max, or average; here we use min (conservative)
+    return min;
+  }
+
+  // Single value: "10000"
+  const numMatch = s.match(/(\d+)/);
+  if (numMatch) {
+    return parseInt(numMatch[1], 10);
+  }
+
+  return 0;
+}
+
 exports.submitAdoptionRequest = async (req, res) => {
   const { pet_id, purpose_of_adoption } = req.body;
   const user_id = req.user.user_id; // Extracted from JWT token
@@ -63,9 +93,13 @@ exports.submitAdoptionRequest = async (req, res) => {
   }
 
   try {
-    // 1) Get user age and monthly_salary from DB
+    // 1) Get user age, salary, email, last_name from DB
     const userQuery = `
-      SELECT TIMESTAMPDIFF(YEAR, birthdate, CURDATE()) AS age, monthly_salary
+      SELECT 
+        TIMESTAMPDIFF(YEAR, birthdate, CURDATE()) AS age,
+        monthly_salary,
+        email,
+        last_name
       FROM user
       WHERE user_id = ?
     `;
@@ -82,7 +116,7 @@ exports.submitAdoptionRequest = async (req, res) => {
       }
 
       const age = userRows[0].age;
-      const monthly_salary = userRows[0].monthly_salary;
+      const monthly_salary_raw = userRows[0].monthly_salary;
 
       // Check if birthdate is missing
       if (age == null) {
@@ -100,8 +134,11 @@ exports.submitAdoptionRequest = async (req, res) => {
         });
       }
 
+      // Convert salary string to numeric value
+      const salaryValue = parseMonthlySalary(monthly_salary_raw);
+
       // If monthly salary below 5000 → reject
-      if (monthly_salary < 5000) {
+      if (salaryValue < 5000) {
         return res.status(403).json({
           status: "LOW_INCOME",
           message:
